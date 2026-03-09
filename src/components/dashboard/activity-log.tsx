@@ -1,0 +1,97 @@
+'use client';
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, XCircle, BrainCircuit, Coins, MessageSquare, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export type EvaluationLog = {
+  id: string;
+  username: string;
+  message: string;
+  score: number;
+  reason: string;
+  shouldTip: boolean;
+  timestamp: Date;
+};
+
+interface ActivityLogProps {
+  logs: EvaluationLog[];
+}
+
+export function ActivityLog({ logs }: ActivityLogProps) {
+  return (
+    <Card className="bg-card border-border shadow-2xl">
+      <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-4">
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-5 w-5 text-primary" />
+          <CardTitle className="text-xl font-semibold">Autonomous Activity Log</CardTitle>
+        </div>
+        <Badge variant="outline" className="text-xs font-mono border-primary/20 text-primary/80">
+          LIVE FEED
+        </Badge>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-border/50">
+          {logs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+              <MessageSquare className="h-10 w-10 opacity-20" />
+              <p>No activity recorded yet. Start simulating messages to see results.</p>
+            </div>
+          ) : (
+            logs.map((log) => (
+              <div key={log.id} className="p-4 hover:bg-white/[0.02] transition-colors group">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-primary">@{log.username}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {log.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground/90 italic line-clamp-2">
+                      "{log.message}"
+                    </p>
+                    <p className="text-sm text-muted-foreground bg-secondary/30 p-2 rounded-md border border-border/30 mt-2">
+                      <span className="font-semibold text-foreground/80">Agent Reasoning:</span> {log.reason}
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-3 min-w-[140px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Quality Score</span>
+                      <div className={cn(
+                        "h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold border",
+                        log.score >= 7 ? "bg-primary/20 border-primary text-primary" : "bg-muted border-border text-muted-foreground"
+                      )}>
+                        {log.score}
+                      </div>
+                    </div>
+                    
+                    {log.shouldTip ? (
+                      <div className="flex flex-col items-end animate-in fade-in slide-in-from-right-2 duration-500">
+                        <Badge className="bg-green-500/10 text-green-500 border-green-500/50 hover:bg-green-500/20 gap-1.5 px-3 py-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          TIP WARRANTED
+                        </Badge>
+                        <span className="text-[10px] font-mono text-green-500/70 mt-1 uppercase tracking-tighter">
+                          TIP SENT: 2 USDT to @{log.username}
+                        </span>
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground border-border gap-1.5 px-3 py-1">
+                        <XCircle className="h-3.5 w-3.5" />
+                        NO TIP
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
