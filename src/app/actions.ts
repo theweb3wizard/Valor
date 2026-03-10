@@ -1,8 +1,7 @@
-
 'use server';
 
 import { evaluateTelegramMessageQuality } from '@/ai/flows/evaluate-telegram-message-quality-flow';
-import { supabase } from '@/lib/supabase';
+import { supabase, getWalletByUsername } from '@/lib/supabase';
 
 export async function processMessage(messageContent: string, username: string = 'simulator_user') {
   try {
@@ -19,10 +18,15 @@ export async function processMessage(messageContent: string, username: string = 
     });
 
     if (result.should_tip) {
+      // Check for wallet even in simulator to keep status logic consistent
+      const walletAddress = await getWalletByUsername(username);
+      const status = walletAddress ? 'queued' : 'pending_registration';
+
       await supabase.from('tips').insert({
         username,
         amount: 2,
-        transaction_status: 'pending',
+        transaction_status: status,
+        wallet_address: walletAddress || null,
         timestamp: new Date().toISOString()
       });
     }
