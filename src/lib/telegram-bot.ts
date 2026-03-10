@@ -17,7 +17,9 @@ export function initTelegramBot() {
   console.log('🤖 Valor Telegram Bot initialized in polling mode.');
 
   // 1. Private Message Handler: Wallet Registration
+  // Specifically listens for /register command in private chats
   bot.onText(/\/register (.+)/, async (msg, match) => {
+    // Bug 1 Fix: Ensure /register only works in private chats
     if (msg.chat.type !== 'private') return;
     
     const username = msg.from?.username || msg.from?.first_name || 'unknown_user';
@@ -41,8 +43,13 @@ export function initTelegramBot() {
 
   // 2. Group Message Handler: Quality Evaluation
   bot.on('message', async (msg) => {
-    // Skip bot messages, non-text messages, or private commands (handled above)
+    // Filter logic to prevent bugs
+    // - Skip bot messages
+    // - Skip messages without text
+    // - Bug Fix: Skip messages starting with / (commands)
     if (msg.from?.is_bot || !msg.text || msg.text.startsWith('/')) return;
+    
+    // Bug 1 Fix: Skip private messages entirely in this group evaluator
     if (msg.chat.type === 'private') return;
 
     const username = msg.from?.username || msg.from?.first_name || 'unknown_user';
@@ -51,6 +58,7 @@ export function initTelegramBot() {
     try {
       const evaluation = await evaluateTelegramMessageQuality({ messageContent });
 
+      // Save evaluation to Supabase
       await supabase.from('evaluations').insert({
         username,
         message_content: messageContent,
@@ -70,11 +78,13 @@ export function initTelegramBot() {
           responseMessage += `\n\nDirect transfer to registered wallet will be processed.`;
           status = 'queued';
         } else {
+          // Provide instructions for future registration
           responseMessage += `\n\n💡 @${username} — send /register [your-wallet-address] to @${process.env.VALOR_BOT_USERNAME || 'ValorAgentBot'} in private chat to receive future tips directly to your wallet.`;
         }
         
         bot?.sendMessage(msg.chat.id, responseMessage);
 
+        // Log the tip in Supabase
         await supabase.from('tips').insert({
           username,
           amount: 2,
@@ -85,6 +95,7 @@ export function initTelegramBot() {
       }
     } catch (error) {
       console.error('Telegram bot evaluation error:', error);
+      // Graceful error handling: don't crash the bot
     }
   });
 
