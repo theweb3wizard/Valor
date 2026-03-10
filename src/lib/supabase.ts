@@ -11,6 +11,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
  * Queries the wallets table for a registered wallet address.
+ * Wallet registration is handled exclusively via the dashboard.
  */
 export async function getWalletByUsername(username: string) {
   const { data, error } = await supabase
@@ -21,17 +22,4 @@ export async function getWalletByUsername(username: string) {
   
   if (error || !data) return null;
   return data.wallet_address;
-}
-
-/**
- * Registers or updates a wallet address for a user.
- */
-export async function registerWallet(username: string, address: string) {
-  const { data, error } = await supabase
-    .from('wallets')
-    .upsert({ username, wallet_address: address }, { onConflict: 'username' })
-    .select();
-  
-  if (error) throw error;
-  return data;
 }
