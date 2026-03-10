@@ -1,19 +1,13 @@
+
 'use client';
 
-import { useState } from 'react';
-import { ActivityLog, type EvaluationLog } from '@/components/dashboard/activity-log';
+import { ActivityLog } from '@/components/dashboard/activity-log';
 import { MessageSimulator } from '@/components/dashboard/message-simulator';
 import { StatsCards } from '@/components/dashboard/stats-cards';
 import { BrainCircuit, ShieldCheck, Github } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function Home() {
-  const [logs, setLogs] = useState<EvaluationLog[]>([]);
-
-  const handleNewEvaluation = (log: EvaluationLog) => {
-    setLogs(prev => [log, ...prev]);
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation / Header */}
@@ -56,21 +50,21 @@ export default function Home() {
               The AI Guardian of Group Quality.
             </h2>
             <p className="text-muted-foreground text-lg leading-relaxed">
-              Valor autonomously monitors Telegram conversations, rewarding deep insights and helpful answers with instant USDT tips. No human intervention, just pure meritocracy powered by Gemini.
+              Valor autonomously monitors Telegram conversations via Supabase Realtime, rewarding deep insights and helpful answers with instant USDT tips. No human intervention, just pure meritocracy powered by Gemini.
             </p>
           </div>
         </section>
 
         {/* Stats Section */}
-        <StatsCards logs={logs} />
+        <StatsCards />
 
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 order-2 lg:order-1">
-            <ActivityLog logs={logs} />
+            <ActivityLog />
           </div>
           <div className="order-1 lg:order-2">
-            <MessageSimulator onNewEvaluation={handleNewEvaluation} />
+            <MessageSimulator onNewEvaluation={() => {}} />
             
             {/* Agent Criteria Box */}
             <div className="mt-6 p-6 rounded-xl border border-border bg-card/50">
@@ -109,7 +103,7 @@ export default function Home() {
       <footer className="border-t border-border/50 py-10 bg-card/20 mt-20">
         <div className="container mx-auto px-4 text-center">
           <p className="text-muted-foreground text-sm">
-            © 2024 Valor Autonomous Agent System. Built with Genkit & Gemini.
+            © 2024 Valor Autonomous Agent System. Built with Supabase & Genkit.
           </p>
         </div>
       </footer>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -8,10 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Send, Zap, Loader2 } from "lucide-react";
 import { processMessage } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
-import type { EvaluationLog } from './activity-log';
 
 interface MessageSimulatorProps {
-  onNewEvaluation: (log: EvaluationLog) => void;
+  onNewEvaluation?: (log: any) => void;
 }
 
 export function MessageSimulator({ onNewEvaluation }: MessageSimulatorProps) {
@@ -24,25 +24,16 @@ export function MessageSimulator({ onNewEvaluation }: MessageSimulatorProps) {
     if (!content.trim()) return;
     
     setIsPending(true);
-    const result = await processMessage(content);
+    const result = await processMessage(content, username);
     setIsPending(false);
 
     if (result.success && result.data) {
-      onNewEvaluation({
-        id: Math.random().toString(36).substr(2, 9),
-        username,
-        message: content,
-        score: result.data.score,
-        reason: result.data.reason,
-        shouldTip: result.data.should_tip,
-        timestamp: new Date(),
-      });
       setContent('');
       
       if (result.data.should_tip) {
         toast({
           title: "Valuable Contribution Detected",
-          description: `Score: ${result.data.score}/10. Simulating 2 USDT tip to @${username}.`,
+          description: `Score: ${result.data.score}/10. 2 USDT tip recorded for @${username}.`,
         });
       }
     } else {
@@ -62,7 +53,7 @@ export function MessageSimulator({ onNewEvaluation }: MessageSimulatorProps) {
           <CardTitle className="text-xl">Telegram Simulator</CardTitle>
         </div>
         <CardDescription>
-          Manually test how Valor evaluates messages in real-time.
+          Simulated messages are saved to Supabase and appear in the live feed.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

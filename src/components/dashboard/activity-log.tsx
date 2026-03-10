@@ -1,25 +1,62 @@
+
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, BrainCircuit, Coins, MessageSquare, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, BrainCircuit, MessageSquare, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from '@/lib/supabase';
 
 export type EvaluationLog = {
   id: string;
   username: string;
-  message: string;
+  message_content: string;
   score: number;
   reason: string;
-  shouldTip: boolean;
-  timestamp: Date;
+  should_tip: boolean;
+  timestamp: string;
 };
 
-interface ActivityLogProps {
-  logs: EvaluationLog[];
-}
+export function ActivityLog() {
+  const [logs, setLogs] = useState<EvaluationLog[]>([]);
 
-export function ActivityLog({ logs }: ActivityLogProps) {
+  useEffect(() => {
+    // 1. Initial fetch from Supabase
+    const fetchInitialLogs = async () => {
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
+      if (data && !error) {
+        setLogs(data as EvaluationLog[]);
+      } else if (error) {
+        console.error('Error fetching logs:', error);
+      }
+    };
+
+    fetchInitialLogs();
+
+    // 2. Subscribe to real-time updates
+    const channel = supabase
+      .channel('evaluations_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'evaluations' },
+        (payload) => {
+          const newEval = payload.new as EvaluationLog;
+          setLogs((current) => [newEval, ...current].slice(0, 50));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   return (
     <Card className="bg-card border-border shadow-2xl">
       <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-4">
@@ -36,7 +73,7 @@ export function ActivityLog({ logs }: ActivityLogProps) {
           {logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
               <MessageSquare className="h-10 w-10 opacity-20" />
-              <p>No activity recorded yet. Start simulating messages to see results.</p>
+              <p>No activity recorded yet. Valor is monitoring the group...</p>
             </div>
           ) : (
             logs.map((log) => (
@@ -47,11 +84,11 @@ export function ActivityLog({ logs }: ActivityLogProps) {
                       <span className="font-bold text-primary">@{log.username}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {log.timestamp.toLocaleTimeString()}
+                        {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
                     <p className="text-sm text-foreground/90 italic line-clamp-2">
-                      "{log.message}"
+                      "{log.message_content.length > 80 ? log.message_content.substring(0, 80) + '...' : log.message_content}"
                     </p>
                     <p className="text-sm text-muted-foreground bg-secondary/30 p-2 rounded-md border border-border/30 mt-2">
                       <span className="font-semibold text-foreground/80">Agent Reasoning:</span> {log.reason}
@@ -69,7 +106,7 @@ export function ActivityLog({ logs }: ActivityLogProps) {
                       </div>
                     </div>
                     
-                    {log.shouldTip ? (
+                    {log.should_tip ? (
                       <div className="flex flex-col items-end animate-in fade-in slide-in-from-right-2 duration-500">
                         <Badge className="bg-green-500/10 text-green-500 border-green-500/50 hover:bg-green-500/20 gap-1.5 px-3 py-1">
                           <CheckCircle2 className="h-3.5 w-3.5" />
