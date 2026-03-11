@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -26,24 +25,63 @@ export function ActivityLog() {
   const [logs, setLogs] = useState<EvaluationLog[]>([]);
 
   useEffect(() => {
-    // 1. Initial fetch from Supabase
     const fetchInitialLogs = async () => {
-      const { data, error } = await supabase
+      // 1. Fetch evaluations first
+      const { data: evals, error: evalError } = await supabase
         .from('evaluations')
-        .select('*, tips(transaction_status, tx_hash)')
+        .select('*')
         .order('timestamp', { ascending: false })
         .limit(50);
 
-      if (data && !error) {
-        setLogs(data as EvaluationLog[]);
-      } else if (error) {
-        console.error('Error fetching logs:', error);
+      if (evalError || !evals) {
+        console.error('Error fetching evaluations:', evalError);
+        return;
       }
+
+      // 2. Extract usernames for evaluations that should have a tip
+      const usernamesWithTips = evals
+        .filter(e => e.should_tip)
+        .map(e => e.username);
+
+      if (usernamesWithTips.length > 0) {
+        // 3. Fetch tips for these users separately
+        const { data: tips, error: tipError } = await supabase
+          .from('tips')
+          .select('username, transaction_status, tx_hash, timestamp')
+          .in('username', usernamesWithTips);
+
+        if (tips && !tipError) {
+          // 4. Merge tips with evaluations based on username and timestamp proximity (within 10s window)
+          const mergedLogs = evals.map(evaluation => {
+            if (!evaluation.should_tip) return evaluation;
+
+            const evalTime = new Date(evaluation.timestamp).getTime();
+            const matchingTip = tips.find(tip => 
+              tip.username === evaluation.username && 
+              Math.abs(new Date(tip.timestamp).getTime() - evalTime) < 10000
+            );
+
+            return {
+              ...evaluation,
+              tips: matchingTip ? [{
+                transaction_status: matchingTip.transaction_status,
+                tx_hash: matchingTip.tx_hash
+              }] : []
+            };
+          });
+
+          setLogs(mergedLogs as EvaluationLog[]);
+          return;
+        }
+      }
+
+      // If no tips were found or there was an error fetching them, just set the evaluations
+      setLogs(evals as EvaluationLog[]);
     };
 
     fetchInitialLogs();
 
-    // 2. Subscribe to real-time updates
+    // Subscribe to real-time updates for the evaluations table
     const channel = supabase
       .channel('evaluations_realtime')
       .on(
