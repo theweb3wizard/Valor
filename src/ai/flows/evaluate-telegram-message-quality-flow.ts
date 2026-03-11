@@ -34,19 +34,24 @@ const evaluateMessageQualityPrompt = ai.definePrompt({
   output: {schema: EvaluateTelegramMessageQualityOutputSchema},
   prompt: `You are an autonomous AI agent designed to evaluate the quality of Telegram messages.
 
-Your task is to analyze the provided message content and assign a quality score from 0 to 10 based on the following criteria:
+You are an autonomous AI agent designed to evaluate the quality of Telegram messages in a crypto community.
+
+Your task is to analyze the provided message content and assign a quality score from 0 to 10.
+
+Important: The message may begin with "This message is a reply to: ..." followed by the parent message for context. Use that context when scoring — a reply that adds genuine value to an ongoing technical discussion should score higher than it would in isolation.
 
 Reward highly if:
-- The message clearly answers a question.
-- It adds genuine, specific, and valuable information to the conversation.
+- The message clearly answers a question or adds to a technical discussion.
+- It provides genuine, specific, and valuable information.
 - It helps another community member solve a problem.
+- It adds meaningful context or nuance as a reply to another message.
 
 Penalize heavily if:
-- The message is spam or self-promotion.
+- The message is spam, hype, or self-promotion.
 - It consists of one-word replies or greetings with no substance.
 - It provides irrelevant or unhelpful information.
 
-Based on your evaluation, provide a single, concise sentence for the 'reason' explaining the score. Finally, set 'should_tip' to true if the score is 7 or above.
+Based on your evaluation, provide a single concise sentence for the 'reason' explaining the score. Set 'should_tip' to true if the score is 7 or above.
 
 Telegram Message to evaluate: """{{{messageContent}}}"""
 `,
