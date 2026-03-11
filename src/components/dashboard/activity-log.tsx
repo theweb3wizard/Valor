@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, BrainCircuit, MessageSquare, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, BrainCircuit, MessageSquare, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from '@/lib/supabase';
 
@@ -16,6 +16,10 @@ export type EvaluationLog = {
   reason: string;
   should_tip: boolean;
   timestamp: string;
+  tips?: Array<{
+    transaction_status: string;
+    tx_hash: string;
+  }>;
 };
 
 export function ActivityLog() {
@@ -26,7 +30,7 @@ export function ActivityLog() {
     const fetchInitialLogs = async () => {
       const { data, error } = await supabase
         .from('evaluations')
-        .select('*')
+        .select('*, tips(transaction_status, tx_hash)')
         .order('timestamp', { ascending: false })
         .limit(50);
 
@@ -112,9 +116,22 @@ export function ActivityLog() {
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           TIP WARRANTED
                         </Badge>
-                        <span className="text-[10px] font-mono text-green-500/70 mt-1 uppercase tracking-tighter">
-                          TIP SENT: 2 USDT to @{log.username}
-                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-mono text-green-500/70 uppercase tracking-tighter">
+                            TIP SENT: 2 USDT to @{log.username}
+                          </span>
+                          {log.tips && log.tips[0] && log.tips[0].transaction_status === 'confirmed' && log.tips[0].tx_hash && (
+                            <a 
+                              href={`https://sepolia.etherscan.io/tx/${log.tips[0].tx_hash}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-muted-foreground hover:text-white transition-colors flex items-center gap-0.5"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                              View on Etherscan
+                            </a>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <Badge variant="outline" className="text-muted-foreground border-border gap-1.5 px-3 py-1">
