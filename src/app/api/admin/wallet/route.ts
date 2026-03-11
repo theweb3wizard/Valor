@@ -14,9 +14,11 @@ export async function GET() {
       network: 'Sepolia Testnet',
       tokenContract: '0xd077a400968890eacc75cdc901f0356c943e4fdb',
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Admin API] Failed to load wallet data:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error: any) {
+    console.error('[Admin API] Failed to load wallet data:', error.message);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
   }
 }
