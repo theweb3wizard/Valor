@@ -123,7 +123,7 @@ export function ActivityLog() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-primary">@{log.username}</span>
+                      <span className="font-bold text-primary">{log.username}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {new Date(log.timestamp).toLocaleTimeString()}
@@ -156,7 +156,7 @@ export function ActivityLog() {
                         </Badge>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[10px] font-mono text-green-500/70 uppercase tracking-tighter">
-                            TIP SENT: 2 USDT to @{log.username}
+                            TIP SENT: 2 USDT to {log.username}
                           </span>
                           {log.tips && log.tips[0] && log.tips[0].transaction_status === 'confirmed' && log.tips[0].tx_hash && (
                             <a 
