@@ -1,9 +1,8 @@
 export async function register() {
-  // Only run in the Node.js runtime.
-  // This guard prevents Next.js from attempting to execute this in the
-  // Edge runtime, which does not support node-telegram-bot-api.
+  // In webhook mode, there is nothing to initialize at server startup.
+  // The Telegram bot no longer polls — Telegram pushes updates to /api/telegram.
+  // Community context is loaded lazily on the first webhook invocation.
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { initTelegramBot } = await import('@/lib/telegram-bot');
-    await initTelegramBot();
+    console.log('[Valor] Server runtime ready. Webhook mode active — listening at /api/telegram.');
   }
 }
