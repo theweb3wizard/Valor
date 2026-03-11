@@ -1,13 +1,24 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
   },
+
+  // These packages use native Node.js addons (.node binaries) that cannot
+  // be bundled by webpack. Marking them as external tells Next.js to leave
+  // them for the Node.js runtime instead of trying to bundle them.
+  serverExternalPackages: [
+    'sodium-native',
+    'sodium-universal',
+    '@tetherto/wdk-wallet-evm',
+    '@tetherto/wdk-wallet-evm-erc-4337',
+    '@tetherto/wdk-wallet',
+  ],
+
   images: {
     remotePatterns: [
       {
