@@ -1,10 +1,9 @@
-
 'use client';
 
 import { ActivityLog } from '@/components/dashboard/activity-log';
 import { MessageSimulator } from '@/components/dashboard/message-simulator';
 import { StatsCards } from '@/components/dashboard/stats-cards';
-import { BrainCircuit, ShieldCheck, Github } from 'lucide-react';
+import { BrainCircuit, ShieldCheck, Github, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function Home() {
@@ -35,7 +34,12 @@ export default function Home() {
               </span>
               NODE ACTIVE
             </Badge>
-            <a href="#" className="text-muted-foreground hover:text-white transition-colors">
+            <a 
+              href="https://github.com/your-repo/valor" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-muted-foreground hover:text-white transition-colors"
+            >
               <Github className="h-5 w-5" />
             </a>
           </div>
@@ -49,9 +53,17 @@ export default function Home() {
             <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
               The AI Guardian of Group Quality.
             </h2>
-            <p className="text-muted-foreground text-lg leading-relaxed">
-              Valor autonomously monitors Telegram conversations via Supabase Realtime, rewarding deep insights and helpful answers with instant USDT tips. No human intervention, just pure meritocracy powered by Gemini.
-            </p>
+            <div className="space-y-6">
+              <div className="flex items-start gap-4 p-4 rounded-xl bg-primary/5 border border-primary/10">
+                <Zap className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <p className="text-primary text-xl font-bold leading-tight">
+                  Valor watches your Telegram group, scores every message with AI, and automatically sends USDT to contributors who add real value — no commands, no voting, no humans.
+                </p>
+              </div>
+              <p className="text-muted-foreground text-lg leading-relaxed pl-4 border-l-2 border-border/50">
+                Powered by Gemini AI and Tether's WDK. Every tip is a real on-chain USDT transaction, settled autonomously the moment a quality message is detected.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -95,6 +107,46 @@ export default function Home() {
                 </li>
               </ul>
             </div>
+
+            {/* How It Works Card */}
+            <div className="mt-6 p-6 rounded-xl border border-border bg-card/50">
+              <div className="flex items-center gap-2 mb-4">
+                <Zap className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-sm uppercase tracking-wider">How It Works</h3>
+              </div>
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-mono text-primary/50 mt-0.5 shrink-0">01</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Valor monitors every message in your Telegram group in real time.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-mono text-primary/50 mt-0.5 shrink-0">02</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Two instant filters remove spam and low-effort messages before any AI cost.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-mono text-primary/50 mt-0.5 shrink-0">03</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Gemini AI scores qualifying messages 1–10 for insight and usefulness.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-mono text-primary/50 mt-0.5 shrink-0">04</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    High-scoring messages trigger an automatic USDT transfer via WDK — on-chain, no human needed.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-[10px] font-mono text-primary/50 mt-0.5 shrink-0">05</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Contributors withdraw their earned USDT anytime from the dashboard.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -103,7 +155,7 @@ export default function Home() {
       <footer className="border-t border-border/50 py-10 bg-card/20 mt-20">
         <div className="container mx-auto px-4 text-center">
           <p className="text-muted-foreground text-sm">
-            © 2024 Valor Autonomous Agent System. Built with Supabase & Genkit.
+            © 2026 Valor Autonomous Agent System. Powered by WDK by Tether & Gemini AI.
           </p>
         </div>
       </footer>
