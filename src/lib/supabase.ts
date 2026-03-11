@@ -4,7 +4,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials missing. Data persistence will be unavailable.');
+  console.warn('[Supabase] WARNING: Supabase credentials missing. Data persistence will be unavailable.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -15,26 +15,37 @@ export async function getCommunitySettings(chatId: string) {
     .select('id, tip_amount, daily_limit, min_score')
     .eq('chat_id', chatId)
     .single();
-  
-  if (error || !data) {
-    console.warn(`No community settings found for chat_id: ${chatId}. Using defaults.`);
+
+  if (error) {
+    console.error(`[Supabase] getCommunitySettings failed for chat_id "${chatId}":`, error.message, '| code:', error.code);
+    return null;
+  }
+  if (!data) {
+    console.error(`[Supabase] getCommunitySettings: no row found for chat_id "${chatId}"`);
     return null;
   }
   return data;
 }
 
-export async function getWalletByUsername(username: string) {
+export async function getWalletByUsername(username: string, communityId: string) {
   const { data, error } = await supabase
     .from('wallets')
     .select('wallet_address')
     .eq('username', username)
+    .eq('community_id', communityId)
     .single();
-  
-  if (error || !data) return null;
+
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 = no rows found — expected when user has no wallet yet, not a real error
+    console.error(`[Supabase] getWalletByUsername failed for @${username}:`, error.message, '| code:', error.code);
+  }
+  if (!data) return null;
   return data.wallet_address;
 }
 
 export async function getRateLimit(communityId: string, username: string, date: string) {
+  console.log(`[RateLimit] Reading rate limit — community: ${communityId} | user: @${username} | date: ${date}`);
+
   const { data, error } = await supabase
     .from('rate_limits')
     .select('tips_today, last_tip_at')
@@ -42,40 +53,55 @@ export async function getRateLimit(communityId: string, username: string, date: 
     .eq('username', username)
     .eq('date', date)
     .single();
-  
-  if (error || !data) return null;
+
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 = no rows found — expected for first-time users today, not a real error
+    console.error(`[Supabase] getRateLimit failed for @${username}:`, error.message, '| code:', error.code);
+    return null;
+  }
+
+  if (!data) {
+    console.log(`[RateLimit] No existing rate limit row for @${username} on ${date} — first tip today`);
+    return null;
+  }
+
+  console.log(`[RateLimit] Found — @${username}: tips_today=${data.tips_today}, last_tip_at=${data.last_tip_at}`);
   return data;
 }
 
 export async function updateRateLimit(communityId: string, username: string, date: string) {
-  // Use upsert to handle first tip of the day
-  const { data: existing } = await supabase
-    .from('rate_limits')
-    .select('tips_today')
-    .eq('community_id', communityId)
-    .eq('username', username)
-    .eq('date', date)
-    .single();
+  const now = new Date().toISOString();
+  console.log(`[RateLimit] Calling upsert_rate_limit RPC — community: ${communityId} | user: @${username} | date: ${date} | now: ${now}`);
 
-  const tips_today = (existing?.tips_today || 0) + 1;
-
-  await supabase.from('rate_limits').upsert({
-    community_id: communityId,
-    username,
-    date,
-    tips_today,
-    last_tip_at: new Date().toISOString()
-  }, {
-    onConflict: 'community_id,username,date'
+  const { data, error } = await supabase.rpc('upsert_rate_limit', {
+    p_community_id: communityId,
+    p_username: username,
+    p_date: date,
+    p_last_tip_at: now
   });
+
+  if (error) {
+    console.error('[Supabase] updateRateLimit RPC FAILED:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint);
+    return false;
+  }
+
+  console.log(`[RateLimit] upsert_rate_limit RPC succeeded for @${username} — response:`, data);
+  return true;
 }
 
-export async function getUserEvaluationCount(username: string) {
+export async function getUserEvaluationCount(username: string, communityId: string) {
   const { count, error } = await supabase
     .from('evaluations')
     .select('*', { count: 'exact', head: true })
-    .eq('username', username);
-  
-  if (error) return 0;
-  return count || 0;
+    .eq('username', username)
+    .eq('community_id', communityId);
+
+  if (error) {
+    console.error(`[Supabase] getUserEvaluationCount failed for @${username}:`, error.message, '| code:', error.code);
+    return 0;
+  }
+
+  const result = count || 0;
+  console.log(`[Supabase] getUserEvaluationCount — @${username}: ${result} evaluations`);
+  return result;
 }
