@@ -26,9 +26,6 @@ type CommunityContext = {
 let communityContext: CommunityContext | null = null;
 
 // ─── Crypto Keywords ──────────────────────────────────────────────────────────
-// Crypto-domain keywords only — generic English words removed intentionally.
-// Word count (>8) and question mark checks handle general substance detection.
-// These keywords exist solely to catch technical crypto discussions specifically.
 const CRYPTO_KEYWORDS = [
   'wallet', 'token', 'blockchain', 'contract', 'protocol',
   'defi', 'nft', 'gas', 'bridge', 'stake', 'yield', 'liquidity',
@@ -39,7 +36,6 @@ const CRYPTO_KEYWORDS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Strips emojis and punctuation, returns lowercase words only.
 function extractMeaningfulWords(text: string): string[] {
   return text
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, ' ')
@@ -53,7 +49,6 @@ function extractMeaningfulWords(text: string): string[] {
     .filter(word => word.length > 0);
 }
 
-// Loads and caches community context from Supabase.
 async function getCommunityContext(): Promise<CommunityContext | null> {
   if (communityContext) return communityContext;
 
@@ -79,12 +74,16 @@ async function getCommunityContext(): Promise<CommunityContext | null> {
   return communityContext;
 }
 
-// Returns a bot instance for sending messages only (no polling).
 function getBotSender(): TelegramBot {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error('[Valor] TELEGRAM_BOT_TOKEN is not set.');
   return new TelegramBot(token, { polling: false });
 }
+
+// Withdraw URL — used in tip notifications so contributors know where to go.
+const WITHDRAW_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/withdraw`
+  : 'https://valor-tgbot.vercel.app/withdraw';
 
 // ─── Webhook Entry Point ──────────────────────────────────────────────────────
 
@@ -92,7 +91,6 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
   const msg = update.message;
   if (!msg) return;
 
-  // Only process group and supergroup messages
   if (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup') return;
 
   const community = await getCommunityContext();
@@ -103,7 +101,7 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
     : (msg.from?.first_name || 'unknown_user');
   const rawText = (msg.text || msg.caption || '').trim();
 
-  // ─── FILTER 1: Hard Rules (zero cost, instant) ─────────────────────────────
+  // ─── FILTER 1: Hard Rules ─────────────────────────────────────────────────
   if (msg.from?.is_bot) return;
   if (!rawText) return;
   if (rawText.startsWith('/')) return;
@@ -115,7 +113,7 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
     return;
   }
 
-  // ─── FILTER 2: Substance Signal (zero cost, instant) ───────────────────────
+  // ─── FILTER 2: Substance Signal ───────────────────────────────────────────
   const hasQuestion = rawText.includes('?');
   const wordCount = meaningfulWords.length;
   const lowerText = rawText.toLowerCase();
@@ -130,21 +128,13 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
   console.log(`[Filter2] PASSED ${username} — words: ${wordCount}, question: ${hasQuestion}, crypto keyword: ${hasCryptoKeyword}`);
 
   try {
-    // ─── REPLY CONTEXT ────────────────────────────────────────────────────────
-    // If this message is a reply, pass the parent message as context to Gemini.
-    // Capped at 200 chars to control token cost. Improves evaluation of replies
-    // that are valuable in context but appear weak in isolation.
     const replyContext = msg.reply_to_message?.text
       ? `This message is a reply to: "${msg.reply_to_message.text.slice(0, 200)}"\n\n`
       : '';
 
     const messageForEvaluation = `${replyContext}${rawText}`;
 
-    // ─── AI EVALUATION ────────────────────────────────────────────────────────
     console.log(`[Valor] Sending to Gemini — ${username}: "${rawText.slice(0, 80)}${rawText.length > 80 ? '...' : ''}"`);
-    if (replyContext) {
-      console.log(`[Valor] Reply context: "${msg.reply_to_message!.text!.slice(0, 60)}..."`);
-    }
 
     const evaluation = await evaluateTelegramMessageQuality({ messageContent: messageForEvaluation });
     console.log(`[Gemini] ${username} — score: ${evaluation.score}/10, should_tip: ${evaluation.should_tip}, reason: "${evaluation.reason}"`);
@@ -192,7 +182,6 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
     // ─── ALL CHECKS PASSED — FIRE TIP ─────────────────────────────────────────
     console.log(`[Valor] ⚡ ALL CHECKS PASSED — firing tip for ${username} (score: ${evaluation.score})`);
 
-    // ─── WDK: GET OR CREATE CONTRIBUTOR WALLET ────────────────────────────────
     let walletAddress: string | null = null;
     let txHash: string | null = null;
     let transactionStatus = 'pending_registration';
@@ -208,7 +197,6 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
         console.log(`[WDK] Existing wallet for ${username}: ${address}`);
       }
 
-      // ─── WDK: SEND USDT TIP ───────────────────────────────────────────────
       console.log(`[WDK] Sending ${community.tip_amount} USDt → ${username} at ${address}`);
       const result = await sendUsdtTip(address, community.tip_amount);
       txHash = result.txHash;
@@ -216,24 +204,25 @@ export async function processWebhookUpdate(update: TelegramBot.Update): Promise<
 
       console.log(`[WDK] ✅ Tip confirmed on-chain — tx: ${txHash}`);
 
+      // Fix 4: include withdraw URL in success message
       tipMessage =
         `⚡ *Valor tipped ${username} ${community.tip_amount} USDT*\n` +
         `Score: ${evaluation.score}/10 — ${evaluation.reason}\n\n` +
         `✅ Sent on-chain!\n` +
         `🔗 [View on Etherscan](https://sepolia.etherscan.io/tx/${txHash})\n\n` +
-        `💡 Visit the Valor dashboard to withdraw your tips.`;
+        `💰 Withdraw your earnings at ${WITHDRAW_URL}`;
 
     } catch (wdkError: unknown) {
-      // WDK failed — fallback: record tip as failed, notify group.
-      // The tip intent is preserved in the database for retry.
       const errorMessage = wdkError instanceof Error ? wdkError.message : 'Unknown WDK error';
       console.error(`[WDK] Transfer failed for ${username}: ${errorMessage}`);
       transactionStatus = walletAddress ? 'transfer_failed' : 'pending_registration';
 
+      // Fix 4: include withdraw URL in fallback message too
       tipMessage =
         `⚡ *Valor recognized ${username} for a quality contribution!*\n` +
         `Score: ${evaluation.score}/10 — ${evaluation.reason}\n\n` +
-        `💡 ${community.tip_amount} USDT tip queued. Visit the Valor dashboard to claim.`;
+        `💡 ${community.tip_amount} USDT tip queued.\n` +
+        `💰 Claim your earnings at ${WITHDRAW_URL}`;
     }
 
     // ─── SEND TELEGRAM NOTIFICATION ───────────────────────────────────────────
@@ -294,7 +283,7 @@ async function logEvaluation(
   }
 }
 
-// ─── Legacy export (kept for compatibility with instrumentation.ts) ───────────
+// ─── Legacy export ────────────────────────────────────────────────────────────
 export async function initTelegramBot() {
   console.log('[Valor] initTelegramBot called — webhook mode active, no polling started.');
   return null;

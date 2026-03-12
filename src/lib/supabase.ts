@@ -36,15 +36,15 @@ export async function getWalletByUsername(username: string, communityId: string)
     .single();
 
   if (error && error.code !== 'PGRST116') {
-    // PGRST116 = no rows found — expected when user has no wallet yet, not a real error
-    console.error(`[Supabase] getWalletByUsername failed for @${username}:`, error.message, '| code:', error.code);
+    console.error(`[Supabase] getWalletByUsername failed for ${username}:`, error.message, '| code:', error.code);
   }
   if (!data) return null;
   return data.wallet_address;
 }
 
 export async function getRateLimit(communityId: string, username: string, date: string) {
-  console.log(`[RateLimit] Reading rate limit — community: ${communityId} | user: @${username} | date: ${date}`);
+  // username already contains @ prefix — do not add another one in logs
+  console.log(`[RateLimit] Reading rate limit — community: ${communityId} | user: ${username} | date: ${date}`);
 
   const { data, error } = await supabase
     .from('rate_limits')
@@ -55,23 +55,23 @@ export async function getRateLimit(communityId: string, username: string, date: 
     .single();
 
   if (error && error.code !== 'PGRST116') {
-    // PGRST116 = no rows found — expected for first-time users today, not a real error
-    console.error(`[Supabase] getRateLimit failed for @${username}:`, error.message, '| code:', error.code);
+    console.error(`[Supabase] getRateLimit failed for ${username}:`, error.message, '| code:', error.code);
     return null;
   }
 
   if (!data) {
-    console.log(`[RateLimit] No existing rate limit row for @${username} on ${date} — first tip today`);
+    console.log(`[RateLimit] No existing rate limit row for ${username} on ${date} — first tip today`);
     return null;
   }
 
-  console.log(`[RateLimit] Found — @${username}: tips_today=${data.tips_today}, last_tip_at=${data.last_tip_at}`);
+  console.log(`[RateLimit] Found — ${username}: tips_today=${data.tips_today}, last_tip_at=${data.last_tip_at}`);
   return data;
 }
 
 export async function updateRateLimit(communityId: string, username: string, date: string) {
   const now = new Date().toISOString();
-  console.log(`[RateLimit] Calling upsert_rate_limit RPC — community: ${communityId} | user: @${username} | date: ${date} | now: ${now}`);
+  // username already contains @ prefix — do not add another one in logs
+  console.log(`[RateLimit] Calling upsert_rate_limit RPC — community: ${communityId} | user: ${username} | date: ${date} | now: ${now}`);
 
   const { data, error } = await supabase.rpc('upsert_rate_limit', {
     p_community_id: communityId,
@@ -85,7 +85,7 @@ export async function updateRateLimit(communityId: string, username: string, dat
     return false;
   }
 
-  console.log(`[RateLimit] upsert_rate_limit RPC succeeded for @${username} — response:`, data);
+  console.log(`[RateLimit] upsert_rate_limit RPC succeeded for ${username} — response:`, data);
   return true;
 }
 
@@ -97,11 +97,11 @@ export async function getUserEvaluationCount(username: string, communityId: stri
     .eq('community_id', communityId);
 
   if (error) {
-    console.error(`[Supabase] getUserEvaluationCount failed for @${username}:`, error.message, '| code:', error.code);
+    console.error(`[Supabase] getUserEvaluationCount failed for ${username}:`, error.message, '| code:', error.code);
     return 0;
   }
 
   const result = count || 0;
-  console.log(`[Supabase] getUserEvaluationCount — @${username}: ${result} evaluations`);
+  console.log(`[Supabase] getUserEvaluationCount — ${username}: ${result} evaluations`);
   return result;
 }

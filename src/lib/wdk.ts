@@ -6,8 +6,8 @@
  *
  * Architecture:
  *   Master seed (env var) → WalletManagerEvm
- *     index 0 → community treasury (sends tips)
- *     index 1+ → contributor wallets (receive tips)
+ *     index 0 → community treasury (sends tips + seeds gas)
+ *     index 1+ → contributor wallets (receive tips, pre-funded with ETH for withdrawals)
  *
  * Network: Ethereum Sepolia testnet
  * Token:   USDt on Sepolia — 0xd077a400968890eacc75cdc901f0356c943e4fdb
@@ -15,6 +15,7 @@
  */
 
 import WalletManagerEvm, { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm';
+import { HDNodeWallet, JsonRpcProvider, parseEther } from 'ethers';
 import { supabase } from '@/lib/supabase';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -23,6 +24,13 @@ const USDT_SEPOLIA = '0xd077a400968890eacc75cdc901f0356c943e4fdb';
 const USDT_DECIMALS = 6;
 const SEPOLIA_RPC = 'https://sepolia.drpc.org';
 const TRANSFER_MAX_FEE = BigInt('5000000000000000'); // 0.005 ETH max gas per tx
+
+// ETH seeded into every new contributor wallet so they can withdraw later.
+// 0.005 ETH covers ~50 withdrawal transactions at current Sepolia gas prices.
+const GAS_SEED_ETH = '0.005';
+
+// Standard BIP-44 Ethereum path — same path WDK uses for index 0.
+const MASTER_ETH_PATH = "m/44'/60'/0'/0/0";
 
 // ─── Wallet Manager Singleton ─────────────────────────────────────────────────
 
@@ -41,6 +49,43 @@ function getWalletManager(): WalletManagerEvm {
 
   console.log('[WDK] WalletManagerEvm initialized (Sepolia)');
   return _walletManager;
+}
+
+// ─── Internal: ETH gas seeding ───────────────────────────────────────────────
+
+/**
+ * Sends a small amount of Sepolia ETH from the master wallet to a new
+ * contributor wallet so they can pay gas on their first withdrawal.
+ * Uses ethers HDNodeWallet directly for native ETH transfer (WDK handles ERC-20 only).
+ * Non-blocking — failure is logged but does not abort the USDT tip.
+ */
+async function seedContributorGas(recipientAddress: string): Promise<void> {
+  const seed = process.env.WDK_MASTER_SEED;
+  if (!seed) {
+    console.error('[WDK] Cannot seed gas — WDK_MASTER_SEED not set.');
+    return;
+  }
+
+  try {
+    const provider = new JsonRpcProvider(SEPOLIA_RPC);
+    const masterWallet = HDNodeWallet.fromPhrase(seed, undefined, MASTER_ETH_PATH).connect(provider);
+
+    console.log(`[WDK] Seeding ${GAS_SEED_ETH} ETH → ${recipientAddress} for withdrawal gas...`);
+
+    const tx = await masterWallet.sendTransaction({
+      to: recipientAddress,
+      value: parseEther(GAS_SEED_ETH),
+    });
+
+    // Wait for one confirmation before proceeding
+    await tx.wait(1);
+    console.log(`[WDK] ✅ Gas seeded — tx: ${tx.hash}`);
+  } catch (err) {
+    // Non-fatal — USDT tip proceeds regardless. Contributor can still receive tip;
+    // they just won't be able to withdraw until gas is added manually.
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`[WDK] ⚠️ Gas seed failed for ${recipientAddress}: ${msg}`);
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -80,6 +125,7 @@ export async function getOrCreateContributorWallet(
     return { address: existing.wallet_address, isNew: false };
   }
 
+  // ─── Create new wallet ────────────────────────────────────────────────────
   const { data: allWallets, error: countError } = await supabase
     .from('wallets')
     .select('account_index')
@@ -106,6 +152,11 @@ export async function getOrCreateContributorWallet(
   if (insertError) throw new Error(`Failed to create wallet for ${username}: ${insertError.message}`);
 
   console.log(`[WDK] ✅ New wallet for ${username}: ${newAddress} (index ${newIndex})`);
+
+  // ─── Seed gas ETH so contributor can withdraw later ───────────────────────
+  // This runs after DB insert so wallet creation is never blocked by gas seeding.
+  await seedContributorGas(newAddress);
+
   return { address: newAddress, isNew: true };
 }
 
