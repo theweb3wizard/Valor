@@ -1,132 +1,69 @@
 /**
  * wdk.ts — Valor WDK Integration
  *
- * Handles all wallet operations using @tetherto/wdk-wallet-evm-erc-4337.
- * All contributor wallets are derived deterministically from WDK_MASTER_SEED.
- * Nothing sensitive is stored in Supabase — only addresses and account indexes.
+ * Uses @tetherto/wdk-wallet-evm (standard EVM, no ERC-4337).
+ * No native binary dependencies — works cleanly in Vercel serverless.
  *
  * Architecture:
- *   Master seed (env var) → WalletManagerEvmErc4337
+ *   Master seed (env var) → WalletManagerEvm
  *     index 0 → community treasury (sends tips)
  *     index 1+ → contributor wallets (receive tips)
  *
  * Network: Ethereum Sepolia testnet
- * Token: USDt on Sepolia — 0xd077a400968890eacc75cdc901f0356c943e4fdb
+ * Token:   USDt on Sepolia — 0xd077a400968890eacc75cdc901f0356c943e4fdb
+ * Gas:     Paid in Sepolia ETH from master wallet
  */
 
-// ─── CRITICAL: Must execute before any WDK/sodium imports ────────────────────
-// sodium-native requires compiled C++ binaries that are unavailable in
-// Vercel's serverless Lambda environment. Setting this env var before
-// any imports forces sodium-universal to use libsodium-wrappers (pure
-// JavaScript) as its backend instead of the native binary.
-// Cryptographic correctness is identical — only in-memory key wiping
-// uses JS instead of C++, which is acceptable for this use case.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-require('libsodium-wrappers');
-if (typeof process !== 'undefined') {
-  process.env.SODIUM_NATIVE_DISABLE = '1';
-}
-
-import WalletManagerEvmErc4337 from '@tetherto/wdk-wallet-evm-erc-4337';
+import WalletManagerEvm, { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm';
 import { supabase } from '@/lib/supabase';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// USDt contract address on Sepolia testnet
 const USDT_SEPOLIA = '0xd077a400968890eacc75cdc901f0356c943e4fdb';
-
-// Sepolia chain ID
-const SEPOLIA_CHAIN_ID = 11155111;
-
-// Pimlico public endpoint — no API key required for testnet
-const PIMLICO_URL = `https://public.pimlico.io/v2/${SEPOLIA_CHAIN_ID}/rpc`;
-
-// ERC-4337 EntryPoint v0.7
-const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
-
-// Pimlico paymaster address on Sepolia
-const PAYMASTER_ADDRESS = '0x777777777777AeC03fd955926DbF81597e66834C';
-
-// USDT has 6 decimals. 1 USDT = 1_000_000 units.
 const USDT_DECIMALS = 6;
-
-// ─── WDK Config ──────────────────────────────────────────────────────────────
-
-function getSepoliaConfig() {
-  return {
-    chainId: SEPOLIA_CHAIN_ID,
-    blockchain: 'ethereum' as const,
-    provider: 'https://sepolia.drpc.org',
-    bundlerUrl: PIMLICO_URL,
-    paymasterUrl: PIMLICO_URL,
-    paymasterAddress: PAYMASTER_ADDRESS,
-    entryPointAddress: ENTRY_POINT,
-    safeModulesVersion: '0.3.0',
-    paymasterToken: {
-      address: USDT_SEPOLIA,
-    },
-    transferMaxFee: 100000, // 0.1 USDt max gas per tx (6 decimals)
-  };
-}
+const SEPOLIA_RPC = 'https://sepolia.drpc.org';
+const TRANSFER_MAX_FEE = BigInt('5000000000000000'); // 0.005 ETH max gas per tx
 
 // ─── Wallet Manager Singleton ─────────────────────────────────────────────────
 
-let _walletManager: InstanceType<typeof WalletManagerEvmErc4337> | null = null;
+let _walletManager: WalletManagerEvm | null = null;
 
-function getWalletManager(): InstanceType<typeof WalletManagerEvmErc4337> {
+function getWalletManager(): WalletManagerEvm {
   if (_walletManager) return _walletManager;
 
   const seed = process.env.WDK_MASTER_SEED;
-  if (!seed) {
-    throw new Error('[WDK] WDK_MASTER_SEED environment variable is not set.');
-  }
+  if (!seed) throw new Error('[WDK] WDK_MASTER_SEED environment variable is not set.');
 
-  _walletManager = new WalletManagerEvmErc4337(seed, getSepoliaConfig());
-  console.log('[WDK] WalletManager initialized (Sepolia, ERC-4337)');
+  _walletManager = new WalletManagerEvm(seed, {
+    provider: SEPOLIA_RPC,
+    transferMaxFee: TRANSFER_MAX_FEE,
+  });
+
+  console.log('[WDK] WalletManagerEvm initialized (Sepolia)');
   return _walletManager;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Returns the master wallet address (index 0).
- * This is the community treasury — admins deposit USDt here.
- */
 export async function getMasterWalletAddress(): Promise<string> {
-  const manager = getWalletManager();
-  const account = await manager.getAccount(0);
+  const account = await getWalletManager().getAccount(0);
   const address = await account.getAddress();
   console.log(`[WDK] Master wallet address: ${address}`);
   return address;
 }
 
-/**
- * Returns the current USDt balance of the master wallet.
- * Used by the dashboard to show available funds.
- */
 export async function getMasterWalletBalance(): Promise<number> {
-  const manager = getWalletManager();
-  const account = await manager.getAccount(0);
-  const rawBalance = await account.getTokenBalance(USDT_SEPOLIA);
-  const balance = Number(rawBalance) / Math.pow(10, USDT_DECIMALS);
+  const account = await getWalletManager().getAccount(0);
+  const raw = await account.getTokenBalance(USDT_SEPOLIA);
+  const balance = Number(raw) / Math.pow(10, USDT_DECIMALS);
   console.log(`[WDK] Master wallet USDt balance: ${balance}`);
   return balance;
 }
 
-/**
- * Gets or creates a contributor wallet for a given username.
- *
- * Strategy: deterministic derivation from master seed.
- * - If wallet exists in Supabase → return stored address
- * - If not → derive next available index, store address + index, return address
- *
- * Nothing sensitive is stored — only the wallet address and account index.
- */
 export async function getOrCreateContributorWallet(
   username: string,
   communityId: string
 ): Promise<{ address: string; isNew: boolean }> {
-  // Check if wallet already exists
   const { data: existing, error: fetchError } = await supabase
     .from('wallets')
     .select('wallet_address, account_index')
@@ -143,8 +80,6 @@ export async function getOrCreateContributorWallet(
     return { address: existing.wallet_address, isNew: false };
   }
 
-  // No wallet yet — derive next available index
-  // Index 0 is reserved for the master/treasury wallet
   const { data: allWallets, error: countError } = await supabase
     .from('wallets')
     .select('account_index')
@@ -152,19 +87,14 @@ export async function getOrCreateContributorWallet(
     .order('account_index', { ascending: false })
     .limit(1);
 
-  if (countError) {
-    console.error('[WDK] Error fetching wallet count:', countError.message);
-  }
+  if (countError) console.error('[WDK] Error fetching wallet count:', countError.message);
 
-  // Next index: if no contributor wallets exist yet, start at 1 (0 is master)
   const lastIndex = allWallets?.[0]?.account_index ?? 0;
   const newIndex = Math.max(lastIndex + 1, 1);
 
-  const manager = getWalletManager();
-  const account = await manager.getAccount(newIndex);
+  const account = await getWalletManager().getAccount(newIndex);
   const newAddress = await account.getAddress();
 
-  // Store in Supabase — address and index only, never the seed or private key
   const { error: insertError } = await supabase.from('wallets').insert({
     community_id: communityId,
     username,
@@ -173,44 +103,31 @@ export async function getOrCreateContributorWallet(
     created_at: new Date().toISOString(),
   });
 
-  if (insertError) {
-    console.error(`[WDK] Failed to store wallet for ${username}:`, insertError.message);
-    throw new Error(`Failed to create wallet for ${username}`);
-  }
+  if (insertError) throw new Error(`Failed to create wallet for ${username}: ${insertError.message}`);
 
-  console.log(`[WDK] ✅ New wallet created for ${username}: ${newAddress} (index ${newIndex})`);
+  console.log(`[WDK] ✅ New wallet for ${username}: ${newAddress} (index ${newIndex})`);
   return { address: newAddress, isNew: true };
 }
 
-/**
- * Sends a USDt tip from the master wallet to a contributor address.
- * Returns the transaction hash on success.
- */
 export async function sendUsdtTip(
   recipientAddress: string,
   amountUsdt: number
 ): Promise<{ txHash: string; fee: bigint }> {
-  const manager = getWalletManager();
-  const masterAccount = await manager.getAccount(0);
-
+  const account = await getWalletManager().getAccount(0);
   const amountRaw = BigInt(Math.round(amountUsdt * Math.pow(10, USDT_DECIMALS)));
 
-  console.log(`[WDK] Sending ${amountUsdt} USDt → ${recipientAddress} (${amountRaw} raw units)`);
+  console.log(`[WDK] Sending ${amountUsdt} USDt → ${recipientAddress}`);
 
-  const result = await masterAccount.transfer({
+  const result = await account.transfer({
     token: USDT_SEPOLIA,
     recipient: recipientAddress,
     amount: amountRaw,
   });
 
-  console.log(`[WDK] ✅ Transfer confirmed — hash: ${result.hash} | fee: ${result.fee} wei`);
+  console.log(`[WDK] ✅ Transfer confirmed — hash: ${result.hash} | fee: ${result.fee}`);
   return { txHash: result.hash, fee: result.fee };
 }
 
-/**
- * Gets the USDt balance of a contributor wallet by username.
- * Returns 0 if wallet doesn't exist yet.
- */
 export async function getContributorBalance(
   username: string,
   communityId: string
@@ -224,20 +141,16 @@ export async function getContributorBalance(
 
   if (!wallet?.wallet_address) return 0;
 
-  const { WalletAccountReadOnlyEvm } = await import('@tetherto/wdk-wallet-evm');
   const readOnly = new WalletAccountReadOnlyEvm(wallet.wallet_address, {
-    provider: 'https://sepolia.drpc.org',
+    provider: SEPOLIA_RPC,
   });
 
-  const rawBalance = await readOnly.getTokenBalance(USDT_SEPOLIA);
-  const balance = Number(rawBalance) / Math.pow(10, USDT_DECIMALS);
+  const raw = await readOnly.getTokenBalance(USDT_SEPOLIA);
+  const balance = Number(raw) / Math.pow(10, USDT_DECIMALS);
   console.log(`[WDK] Balance for ${username}: ${balance} USDt`);
   return balance;
 }
 
-/**
- * Withdraws USDt from a contributor's Valor wallet to their external address.
- */
 export async function withdrawContributorFunds(
   username: string,
   communityId: string,
@@ -251,17 +164,14 @@ export async function withdrawContributorFunds(
     .eq('community_id', communityId)
     .single();
 
-  if (error || !wallet) {
-    throw new Error(`No wallet found for ${username}`);
-  }
+  if (error || !wallet) throw new Error(`No wallet found for ${username}`);
 
-  const manager = getWalletManager();
-  const contributorAccount = await manager.getAccount(wallet.account_index);
+  const account = await getWalletManager().getAccount(wallet.account_index);
   const amountRaw = BigInt(Math.round(amountUsdt * Math.pow(10, USDT_DECIMALS)));
 
   console.log(`[WDK] Withdraw: ${username} → ${destinationAddress} | ${amountUsdt} USDt`);
 
-  const result = await contributorAccount.transfer({
+  const result = await account.transfer({
     token: USDT_SEPOLIA,
     recipient: destinationAddress,
     amount: amountRaw,
