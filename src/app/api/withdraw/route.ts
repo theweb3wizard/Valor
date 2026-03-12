@@ -1,19 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withdrawContributorFunds, getContributorBalance } from '@/lib/wdk';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
+// Auto-resolves communityId from the username's wallet record.
+// The user never needs to know or enter their community ID.
+async function resolveCommunityId(username: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('wallets')
+    .select('community_id')
+    .eq('username', username)
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+  return data.community_id;
+}
+
+// ── POST: Execute withdrawal ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { username, communityId, destinationAddress, amount } = body;
+    const { username, destinationAddress, amount } = body;
 
-    // ── Validate inputs ──────────────────────────────────────────────────────
     if (!username || typeof username !== 'string') {
       return NextResponse.json({ error: 'username is required.' }, { status: 400 });
-    }
-    if (!communityId || typeof communityId !== 'string') {
-      return NextResponse.json({ error: 'communityId is required.' }, { status: 400 });
     }
     if (!destinationAddress || typeof destinationAddress !== 'string') {
       return NextResponse.json({ error: 'destinationAddress is required.' }, { status: 400 });
@@ -25,26 +37,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'amount must be a positive number.' }, { status: 400 });
     }
 
-    // ── Check available balance ──────────────────────────────────────────────
+    const communityId = await resolveCommunityId(username);
+    if (!communityId) {
+      return NextResponse.json(
+        { error: 'No wallet found for this username. Have you received a tip yet?' },
+        { status: 404 }
+      );
+    }
+
     const balance = await getContributorBalance(username, communityId);
     if (balance <= 0) {
       return NextResponse.json({ error: 'No USDT balance available to withdraw.' }, { status: 400 });
     }
     if (amount > balance) {
-      return NextResponse.json({
-        error: `Insufficient balance. Available: ${balance.toFixed(2)} USDT.`
-      }, { status: 400 });
+      return NextResponse.json(
+        { error: `Insufficient balance. Available: ${balance.toFixed(2)} USDT.` },
+        { status: 400 }
+      );
     }
 
-    // ── Execute withdrawal via WDK ───────────────────────────────────────────
     console.log(`[Withdraw API] ${username} withdrawing ${amount} USDT → ${destinationAddress}`);
-    const { txHash } = await withdrawContributorFunds(
-      username,
-      communityId,
-      destinationAddress,
-      amount
-    );
-
+    const { txHash } = await withdrawContributorFunds(username, communityId, destinationAddress, amount);
     console.log(`[Withdraw API] ✅ Withdrawal confirmed — tx: ${txHash}`);
 
     return NextResponse.json({
@@ -62,18 +75,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── GET: Check contributor balance ──────────────────────────────────────────
+// ── GET: Check contributor balance ───────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const username = searchParams.get('username');
-    const communityId = searchParams.get('communityId');
 
-    if (!username || !communityId) {
-      return NextResponse.json(
-        { error: 'username and communityId are required.' },
-        { status: 400 }
-      );
+    if (!username) {
+      return NextResponse.json({ error: 'username is required.' }, { status: 400 });
+    }
+
+    const communityId = await resolveCommunityId(username);
+    if (!communityId) {
+      return NextResponse.json({ username, balance: 0 });
     }
 
     const balance = await getContributorBalance(username, communityId);
