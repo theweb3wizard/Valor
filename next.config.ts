@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
@@ -12,7 +13,7 @@ const nextConfig: NextConfig = {
     if (isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        'sodium-native': require('path').resolve('./src/stubs/sodium-native.js'),
+        'sodium-native': path.resolve('./src/stubs/sodium-native.js'),
       };
     }
     return config;
