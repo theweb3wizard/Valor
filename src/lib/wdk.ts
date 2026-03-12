@@ -100,7 +100,7 @@ export async function getOrCreateContributorWallet(
     username,
     wallet_address: newAddress,
     account_index: newIndex,
-    created_at: new Date().toISOString(),
+    registered_at: new Date().toISOString(),
   });
 
   if (insertError) throw new Error(`Failed to create wallet for ${username}: ${insertError.message}`);
