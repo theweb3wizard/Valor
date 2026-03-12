@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     '@tetherto/wdk-wallet-evm',
     '@tetherto/wdk-wallet-evm-erc-4337',
     '@tetherto/wdk-wallet',
+    'sodium-universal',
+    'sodium-native',
   ],
   webpack: (config, { isServer }) => {
     if (isServer) {
