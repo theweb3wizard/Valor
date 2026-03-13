@@ -35,7 +35,7 @@ export default function Home() {
               NODE ACTIVE
             </Badge>
             <a 
-              href="https://github.com/your-repo/valor" 
+              href="https://github.com/theweb3wizard/Valor.git" 
               target="_blank" 
               rel="noopener noreferrer" 
               className="text-muted-foreground hover:text-white transition-colors"
