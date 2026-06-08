@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="g-base" x1="2" y1="0" x2="30" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#B45309"/>
+    </linearGradient>
+  </defs>
+  <!-- Gem/shield body -->
+  <path d="M16 0L30 8V23L16 32L2 23V8L16 0Z" fill="url(#g-base)"/>
+  <!-- Left highlight facet -->
+  <path d="M16 0L2 8V23L16 32V0Z" fill="rgba(255,255,255,0.08)"/>
+  <!-- Bottom shadow facet -->
+  <path d="M5 22L16 32L27 22L16 14Z" fill="rgba(0,0,0,0.12)"/>
+  <!-- V cutout left -->
+  <path d="M10 9L16 22" stroke="#0D0D0D" stroke-width="3" stroke-linecap="round"/>
+  <!-- V cutout right -->
+  <path d="M22 9L16 22" stroke="#0D0D0D" stroke-width="3" stroke-linecap="round"/>
+  <!-- Star sparkle -->
+  <path d="M24 4L24.5 7L27.5 7.5L24.5 8L24 11L23.5 8L20.5 7.5L23.5 7Z" fill="#FCD34D"/>
+</svg>

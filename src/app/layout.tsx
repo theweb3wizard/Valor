@@ -1,10 +1,17 @@
 import type {Metadata} from 'next';
+import { Toaster } from 'sonner';
 import './globals.css';
-import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Valor | Autonomous AI Telegram Agent',
-  description: 'AI-driven message evaluation and USDT tipping for Telegram communities.',
+  title: 'Valor | Autonomous Community Rewards',
+  description: 'AI-powered quality evaluation and autonomous USDC rewards for your Telegram community.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: { url: '/favicon.svg' },
+  },
 };
 
 export default function RootLayout({
@@ -14,14 +21,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased bg-background text-foreground">
+      <body className="antialiased bg-background text-foreground">
         {children}
-        <Toaster />
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );
