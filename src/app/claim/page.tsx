@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { isAddress } from 'viem';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ interface WalletInfo {
   available: number;
 }
 
-export default function ClaimPage() {
+function ClaimForm() {
   const searchParams = useSearchParams();
   const userId = searchParams.get('user');
 
@@ -169,5 +169,13 @@ export default function ClaimPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ClaimPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center p-4"><p className="text-center text-sm text-muted-foreground">Loading...</p></div>}>
+      <ClaimForm />
+    </Suspense>
   );
 }
