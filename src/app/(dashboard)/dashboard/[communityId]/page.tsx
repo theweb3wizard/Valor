@@ -4,6 +4,7 @@ import { createServerSupabase } from '@/lib/supabase/server';
 import { StatsRow } from '@/components/dashboard/StatsRow';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { Leaderboard } from '@/components/dashboard/Leaderboard';
+import type { Evaluation, Tip, Community } from '@/types/database';
 
 interface Props {
   params: Promise<{ communityId: string }>;
@@ -13,29 +14,48 @@ export default async function CommunityDashboardPage({ params }: Props) {
   const { communityId } = await params;
   const supabase = await createServerSupabase();
 
-  const { data: community } = await supabase
-    .from('communities')
-    .select('*')
-    .eq('id', communityId)
-    .single();
+  let community: Community | null = null;
+  let evaluations: Evaluation[] = [];
+  let tips: Tip[] = [];
+
+  try {
+    const { data: c } = await supabase
+      .from('communities')
+      .select('*')
+      .eq('id', communityId)
+      .single();
+    community = c;
+  } catch {
+    // fall through to notFound
+  }
 
   if (!community) {
     notFound();
   }
 
-  const { data: evaluations } = await supabase
-    .from('evaluations')
-    .select('*')
-    .eq('community_id', communityId)
-    .order('evaluated_at', { ascending: false })
-    .limit(50);
+  try {
+    const { data: e } = await supabase
+      .from('evaluations')
+      .select('*')
+      .eq('community_id', communityId)
+      .order('evaluated_at', { ascending: false })
+      .limit(50);
+    evaluations = e ?? [];
+  } catch {
+    // evaluations unavailable — show empty
+  }
 
-  const { data: tips } = await supabase
-    .from('tips')
-    .select('*')
-    .eq('community_id', communityId)
-    .order('tipped_at', { ascending: false })
-    .limit(50);
+  try {
+    const { data: t } = await supabase
+      .from('tips')
+      .select('*')
+      .eq('community_id', communityId)
+      .order('tipped_at', { ascending: false })
+      .limit(50);
+    tips = t ?? [];
+  } catch {
+    // tips unavailable — show empty
+  }
 
   const totalTips = tips?.reduce((s, t) => s + (t.transaction_status === 'confirmed' ? t.amount : 0), 0) ?? 0;
   const totalEvals = evaluations?.length ?? 0;

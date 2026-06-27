@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
       .in('transaction_status', ['confirmed', 'pending', 'failed']);
 
     const earnedByCommunity = new Map<string, number>();
-    const pendingByCommunity = new Map<string, number>();
 
     for (const tip of tips ?? []) {
       if (tip.transaction_status === 'confirmed') {

@@ -27,15 +27,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const { supabaseResponse, user } = await updateSession(request);
+  try {
+    const { supabaseResponse, user } = await updateSession(request);
 
-  if (!user) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+
+    return supabaseResponse;
+  } catch {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
-
-  return supabaseResponse;
 }
 
 export const config = {

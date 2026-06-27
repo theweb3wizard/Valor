@@ -1,22 +1,22 @@
-function requireEnv(name: string): string {
-  const value = process.env[name];
+const warnEnv = (name: string, value?: string): string => {
   if (!value || value.trim() === '') {
-    throw new Error(
-      `Missing required environment variable: ${name}. ` +
-      `Set this value in .env.local or your Vercel environment variables.`
-    );
+    if (typeof console !== 'undefined') {
+      console.warn(`Missing environment variable: ${name}. Some features may not work.`);
+    }
+    return '';
   }
   return value;
-}
+};
 
-function optionalEnv(name: string, defaultValue: string = ''): string {
+const optionalEnv = (name: string, defaultValue: string = ''): string => {
   return process.env[name] || defaultValue;
-}
+};
 
+// Server-side config (only available in server code)
 export const serverConfig = {
-  supabaseUrl: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-  supabaseAnonKey: requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-  supabaseServiceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  supabaseUrl: warnEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL),
+  supabaseAnonKey: warnEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+  supabaseServiceRoleKey: warnEnv('SUPABASE_SERVICE_ROLE_KEY', process.env.SUPABASE_SERVICE_ROLE_KEY),
   geminiApiKey: optionalEnv('GEMINI_API_KEY'),
   cdpApiKeyName: optionalEnv('CDP_API_KEY_NAME'),
   cdpApiKeyPrivateKey: optionalEnv('CDP_API_KEY_PRIVATE_KEY'),
@@ -26,18 +26,13 @@ export const serverConfig = {
   qstashNextSigningKey: optionalEnv('QSTASH_NEXT_SIGNING_KEY'),
   paddleApiKey: optionalEnv('PADDLE_API_KEY'),
   paddleWebhookSecret: optionalEnv('PADDLE_WEBHOOK_SECRET'),
-  appUrl: requireEnv('NEXT_PUBLIC_APP_URL'),
+  appUrl: warnEnv('NEXT_PUBLIC_APP_URL', process.env.NEXT_PUBLIC_APP_URL),
   cronSecret: optionalEnv('CRON_SECRET'),
-  hasCdpConfig: !!process.env['CDP_API_KEY_NAME'] && !!process.env['CDP_API_KEY_PRIVATE_KEY'],
-  hasPaddleConfig: !!process.env['PADDLE_API_KEY'],
-  hasQstashConfig: !!process.env['QSTASH_TOKEN'] && !!process.env['QSTASH_CURRENT_SIGNING_KEY'],
-  hasCronSecret: !!process.env['CRON_SECRET'],
-};
-
-export const clientConfig = {
-  supabaseUrl: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-  supabaseAnonKey: requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-  paddleClientToken: optionalEnv('NEXT_PUBLIC_PADDLE_CLIENT_TOKEN'),
-  paddleEnvironment: optionalEnv('NEXT_PUBLIC_PADDLE_ENVIRONMENT', 'sandbox'),
-  appUrl: requireEnv('NEXT_PUBLIC_APP_URL'),
+  hasSupabaseConfig: !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  hasGeminiConfig: !!process.env.GEMINI_API_KEY,
+  hasCdpConfig: !!process.env.CDP_API_KEY_NAME && !!process.env.CDP_API_KEY_PRIVATE_KEY,
+  hasPaddleConfig: !!process.env.PADDLE_API_KEY,
+  hasQstashConfig: !!process.env.QSTASH_TOKEN && !!process.env.QSTASH_CURRENT_SIGNING_KEY,
+  hasCronSecret: !!process.env.CRON_SECRET,
+  hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
 };

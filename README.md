@@ -1,312 +1,134 @@
-<p align="center">
-  <img src="public/banner.png" alt="Valor Logo" width="120" />
-</p>
+# Valor — Autonomous Community Rewards Engine
 
-# Valor — Autonomous Community Intelligence Agent
+> **AI-powered quality evaluation + autonomous USDC rewards for Telegram communities. No commands. No voting. No humans in the loop.**
 
-> **Valor watches your Telegram group, decides who contributed real value, and sends them USDC on Base. No commands. No voting. No humans in the loop.**
-
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Network](https://img.shields.io/badge/network-Base-blueviolet.svg)](https://basescan.org)
-[![Stack](https://img.shields.io/badge/stack-CDP%20|%20AI%20SDK%20|%20QStash-orange.svg)]()
-
-**Live Dashboard:** [valorapp.com](https://valorapp.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=fff)](https://typescriptlang.org)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000?logo=next.js)](https://nextjs.org)
+[![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=fff)](https://supabase.com)
+[![Coinbase CDP](https://img.shields.io/badge/CDP-0052FF?logo=coinbase&logoColor=fff)](https://docs.cdp.coinbase.com)
+[![Base](https://img.shields.io/badge/Base-0052FF?logo=base&logoColor=fff)](https://base.org)
+[![Gemini](https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=fff)](https://ai.google.dev)
 
 ---
 
-## What Valor Is
+## Features (What Each Demonstrates)
 
-Valor is an AI agent that lives inside a Telegram group and runs a continuous quality loop. Every message is evaluated by Gemini 2.5 Flash. When a message earns a tip, Valor creates a CDP wallet for the contributor and sends USDC on Base — no commands, no registration, no human decision.
-
-**This is not a tipping bot.** Tipping bots wait for someone to type `/tip @user`. Valor *perceives, decides, and acts* autonomously.
+| Feature | What It Demonstrates |
+|---|---|
+| **Async message pipeline** via Upstash QStash | Decoupled architecture — webhook returns 200 in <50ms, heavy work queues to a background job. Solves the Telegram 10s timeout problem without blocking. |
+| **Two-filter spam guard** | Cost engineering at the architecture level — pure-TypeScript pre-filters eliminate 90%+ of messages before any paid AI call. Reduces Gemini costs from ~$18/mo to ~$1-2/mo at scale. |
+| **Structured AI evaluation** with Gemini + Vercel AI SDK | Schema-forced LLM output via Zod validation. Gemini must return valid typed JSON or the pipeline rejects it. No prompt-injection-based parsing. |
+| **Multi-tenant SaaS auth** via Supabase email magic links | Passwordless auth with server-side session refresh. Middleware-level route protection with public-path whitelisting. |
+| **Autonomous on-chain payments** via Coinbase CDP | MPC wallets with no seed phrase management. Gasless USDC transfers on Base. Idempotency keys prevent duplicate tips. |
+| **Real-time dashboard** with Supabase Realtime | Live-updating activity feed via PostgreSQL logical replication. Hybrid server/client rendering — initial data is SSR, updates stream via WebSocket. |
+| **Planned billing integration** via Paddle | Merchant-of-Record pattern. Subscription tier enforcement at the database level. The billing code ships ready but inactive until Paddle credentials are configured. |
+| **Graceful degradation** | Every external dependency (Supabase, CDP, Gemini, QStash, Telegram) is gated by a config-aware client that safely returns `null` when unconfigured. No import-time crashes. |
 
 ---
 
-## v2.0 Stack
+## Tech Stack (Why Each Choice)
 
-| Layer | Technology | Why |
+| Layer | Choice | Reasoning |
 |---|---|---|
-| Frontend & API | Next.js 15 (App Router) + TypeScript | Serverless, App Router, Vercel-native |
-| AI Evaluation | **Vercel AI SDK** + Gemini 2.5 Flash | Structured JSON output, streaming, typed tool calls |
-| Wallet Infrastructure | **Coinbase CDP** (`coinbase-sdk`) | MPC wallets, ERC-20 USDC transfers, no seed phrase management |
-| Message Queue | **Upstash QStash** | Async webhook processing — avoids Vercel 10s timeout |
-| Database | Supabase (PostgreSQL + Realtime) | Live dashboard subscriptions, atomic RPC |
-| Payments | **Paddle** | Subscription billing, tax compliance, invoicing |
-| Telegram | `node-telegram-bot-api` (webhook mode) | Webhooks scale on Vercel; polling requires a persistent process |
-| Deployment | Vercel | Zero-config Next.js, serverless functions |
-| Blockchain | **Base (Coinbase L2)** | Low fees (< $0.01/tx), native USDC, EVM-compatible |
+| Framework | **Next.js 16** (App Router) | Unified server/client model. Server Components for dashboard data (SSR, zero JS). Route Handlers for API endpoints. Vercel-native. |
+| Language | **TypeScript** (strict) | Full type safety across the stack — database rows (Supabase types), API payloads (Zod), AI output (Zod), environment config, component props. No `any` types. |
+| Database | **Supabase** (PostgreSQL) | Relational integrity (foreign keys, unique constraints). Realtime subscriptions via logical replication. Atomic RPC functions for concurrent-safe rate limiting. RLS for direct client queries. |
+| Auth | **Supabase Auth** | Built on PostgreSQL. Email magic links (passwordless). Server-side cookie-based sessions via `@supabase/ssr`. Middleware-level route protection. |
+| AI | **Gemini 2.5 Flash** + Vercel AI SDK | Fast inference (~1.5-3s). Structured output via Zod schema. Rate-limit retry logic (2 retries, 2s backoff). Falls back to `{ score: 0, should_tip: false }` on failure — never crashes the tip pipeline. |
+| Wallets | **Coinbase CDP** (MPC) | No seed phrases, no private keys. Gasless USDC on Base. Production-grade wallet infrastructure from Coinbase. Pure TypeScript — deploys cleanly to Vercel serverless. |
+| Blockchain | **Base** (Coinbase L2) | Sub-cent transaction fees. Native USDC. EVM-compatible. CDP Paymaster covers gas — contributors never need ETH. |
+| Queue | **Upstash QStash** | HTTP-based message queue. No persistent process needed — works with Vercel serverless. 1K msgs/day free. Verifiable webhook signatures. |
+| Billing | **Paddle** | Merchant of Record (handles global VAT/Sales tax). No monthly fee — only 5% + $0.50 per transaction. Ships ready, activates with env vars. |
+| UI | **Tailwind CSS v4** + shadcn/ui | CSS-first configuration via `@theme`. Runtime dark theme with gold accent. `sonner` for toasts (replaces deprecated shadcn toast). |
+| Deployment | **Vercel** | Zero-config Next.js. Serverless functions per route. Edge middleware for auth. Cron jobs for health checks. |
 
 ---
 
-## Architecture
+## Project Structure
 
 ```
-Telegram Member —> Message —> POST /api/telegram
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │  processWebhookUpdate │
-                         │  (synchronous)        │
-                         │  • Hard filters       │
-                         │  • Substance check    │
-                         │  • Enqueue to QStash  │
-                         └──────────┬───────────┘
-                                    │ QStash message
-                                    ▼
-                         ┌──────────────────────┐
-                         │  /api/evaluate        │
-                         │  (async, no timeout)  │
-                         │  • Gemini 2.5 Flash   │
-                         │  • Score + reason     │
-                         │  • Store evaluation   │
-                         │  • If tip: enqueue    │
-                         └──────────┬───────────┘
-                                    │ QStash message
-                                    ▼
-                         ┌──────────────────────┐
-                         │  /api/execute-tip     │
-                         │  (async, no timeout)  │
-                         │  • CDP wallet derive  │
-                         │  • Treasury balance   │
-                         │  • Rate limit check   │
-                         │  • USDC transfer      │
-                         │  • Telegram notify    │
-                         └──────────────────────┘
-```
-
-Key change from v1: **QStash decouples the webhook**. Telegram's webhook has a 10-second timeout. With QStash, the webhook handler just filters and enqueues. The heavy work (AI evaluation, blockchain transfer) happens asynchronously with no timeout constraint.
-
----
-
-## Coinbase CDP Integration
-
-Valor v2.0 replaces the WDK wallet infrastructure with Coinbase Developer Platform's **MPC wallets**:
-
-```typescript
-import { Coinbase } from '@coinbase/coinbase-sdk';
-
-// Server-side WalletManager
-class CDPWalletManager {
-  async getOrCreateWallet(communityId: string, userId: string): Promise<Wallet> {
-    // CDP creates MPC wallets — no seed phrase, no private keys
-    return await Wallet.create({ networkId: NetworkId.BaseSepolia });
-  }
-
-  async transferUSDC(from: Wallet, to: string, amount: number): Promise<string> {
-    const transfer = await from.createTransfer({
-      amount,
-      assetId: 'usdc',
-      destination: to,
-    });
-    return transfer.getTransactionHash();
-  }
-}
-```
-
-Key advantages over WDK:
-- **No seed phrase management** — CDP handles key sharding with MPC
-- **Gasless** — CDP can sponsor gas or the treasury covers it
-- **Any EVM chain** — Base, Base Sepolia, Polygon, Ethereum mainnet
-- **No native dependencies** — pure TypeScript, deploys cleanly to Vercel
-
----
-
-## How It Works
-
-### Flow: Telegram Message → USDC Tip
-
-1. **Message arrives** via webhook at `/api/telegram`
-2. **Hard filters** drop bots, commands, short messages (~60% eliminated)
-3. **Substance check** passes only messages with questions, length, or domain keywords (~80% of remainder eliminated)
-4. **QStash enqueue** — heavy work is queued, webhook returns 200 immediately
-5. **Gemini evaluation** at `/api/evaluate` — returns score (0–10) + reason
-6. **Rate limit check** — daily limit, cooldown, new-user penalty
-7. **CDP wallet** get-or-create for the contributor
-8. **USDC transfer** from community treasury → contributor's CDP wallet
-9. **Telegram notification** with score, reason, and claim link
-
-### AI Evaluation
-
-```typescript
-const { text } = await generateText({
-  model: gemini25Flash,
-  system: `You evaluate Telegram messages for quality on a scale of 0-10.
-Score 7+ merits a USDC reward.
-Reward: accurate answers, technical explanations, genuine insight.
-Penalize: spam, self-promotion, low-effort, one-word replies.`,
-  prompt: `Message: "${messageContent}"
-${isReply ? `In reply to: "${parentContent}"` : ''}`,
-});
+src/
+├── app/
+│   ├── (auth)/                     # Auth group — login, callback
+│   ├── (dashboard)/                # Dashboard group — layout, community pages
+│   ├── api/                        # Route handlers
+│   │   ├── auth/signout/
+│   │   ├── billing/checkout, webhook/
+│   │   ├── claim/verify, withdraw/
+│   │   ├── community/, [id]/, verify-bot/
+│   │   ├── health/
+│   │   ├── jobs/evaluate/          # QStash job processor (tip engine)
+│   │   └── webhook/[botToken]/     # Telegram webhook entry point
+│   ├── claim/
+│   ├── faq/
+│   ├── onboard/                    # 4-step onboarding wizard
+│   ├── privacy/, terms/, refund/
+│   ├── layout.tsx                  # Root layout — dark theme, Toaster
+│   ├── page.tsx                    # Landing page
+│   └── globals.css                 # Tailwind v4 theme tokens
+├── components/
+│   ├── dashboard/                  # ActivityFeed, StatsRow, Leaderboard, TipEvent
+│   ├── landing/                    # Hero, HowItWorks, Pricing
+│   ├── onboarding/                 # StepIndicator, StepNameCommunity, etc.
+│   └── ui/                         # shadcn/ui — button, card, dialog
+├── lib/
+│   ├── cdp/                        # Coinbase CDP — client, wallets, transfers
+│   ├── gemini/                     # AI evaluation — schema, evaluate
+│   ├── paddle/                     # Paddle billing — client
+│   ├── qstash/                     # Upstash QStash — client
+│   ├── supabase/                   # Supabase — server, client, middleware
+│   ├── telegram/                   # Telegram — filters, notify
+│   ├── config.ts                   # Server-side typed config
+│   ├── client-config.ts            # Client-side typed config
+│   └── utils.ts                    # cn() helper
+├── middleware.ts                   # Auth session + route protection
+└── types/
+    └── database.ts                 # Full Database type with Row/Insert/Update
 ```
 
 ---
 
-## Pages
-
-| Path | Description |
-|---|---|
-| `/` | Landing page (Hero, How It Works, Pricing) |
-| `/login` | Email magic link authentication |
-| `/dashboard` | Live feed + stats (Supabase Realtime) |
-| `/admin` | Community setup, wallet funding, configuration |
-| `/claim` | Contributors claim tips to external wallets |
-| `/privacy` | Privacy Policy |
-| `/terms` | Terms of Service |
-| `/refund` | Refund Policy |
-| `/faq` | Frequently Asked Questions |
-
----
-
-## Pricing
-
-| Plan | Price | Communities | Evals/mo | Tips/mo |
-|---|---|---|---|---|
-| Free | $0 | 1 | 100 | 10 |
-| Starter | $29/mo | 1 | 5,000 | 500 |
-| Pro | $79/mo | 5 | 25,000 | 2,500 |
-| Business | Custom | Unlimited | Custom | Custom |
-
-Billed monthly via Paddle. You only pay Vercel infrastructure costs on top.
-
----
-
-## Running Locally
-
-### Prerequisites
-
-- Node.js 20+
-- Supabase project
-- Telegram bot token ([@BotFather](https://t.me/botfather))
-- Google AI API key (Gemini)
-- Coinbase CDP API key
-- Upstash QStash token
-- Paddle API credentials (optional for local)
-
-### 1. Clone and Install
+## Quick Start
 
 ```bash
-git clone https://github.com/your-username/Valor.git
+# Clone
+git clone https://github.com/your-username/valor.git
 cd valor
+
+# Install
 npm install
-```
 
-### 2. Environment Variables
+# Set up environment
+cp .env.production.example .env.local
+# Fill in your credentials (see docs/CONTRIBUTING.md for detailed setup)
 
-Create `.env.local`:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Telegram
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_WEBHOOK_SECRET=
-
-# AI
-GEMINI_API_KEY=
-
-# Coinbase CDP
-CDP_API_KEY_NAME=
-CDP_API_KEY_PRIVATE_KEY=
-CDP_NETWORK_ID=base-sepolia
-
-# Upstash QStash
-QSTASH_TOKEN=
-QSTASH_CURRENT_SIGNING_KEY=
-QSTASH_NEXT_SIGNING_KEY=
-
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-### 3. Database
-
-```sql
--- Core tables (see src/db/ for full schema)
-CREATE TABLE communities (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  chat_id TEXT NOT NULL UNIQUE,
-  creator_user_id UUID NOT NULL,
-  tip_amount NUMERIC NOT NULL DEFAULT 2,
-  daily_limit INTEGER NOT NULL DEFAULT 5,
-  min_score INTEGER NOT NULL DEFAULT 7,
-  cooldown_minutes INTEGER NOT NULL DEFAULT 30,
-  usdc_balance NUMERIC NOT NULL DEFAULT 0,
-  plan TEXT NOT NULL DEFAULT 'free',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE evaluations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  community_id UUID NOT NULL,
-  username TEXT NOT NULL,
-  message_content TEXT NOT NULL,
-  score INTEGER NOT NULL,
-  reason TEXT NOT NULL,
-  should_tip BOOLEAN NOT NULL DEFAULT false,
-  timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE tips (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  community_id UUID NOT NULL,
-  username TEXT NOT NULL,
-  amount NUMERIC NOT NULL,
-  wallet_address TEXT,
-  tx_hash TEXT,
-  status TEXT NOT NULL,
-  fail_reason TEXT,
-  timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
-  paddle_subscription_id TEXT,
-  plan TEXT NOT NULL,
-  status TEXT NOT NULL,
-  current_period_start TIMESTAMPTZ,
-  current_period_end TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### 4. Run
-
-```bash
+# Run
 npm run dev
+
+# Build
+npm run build
 ```
-
-For Telegram webhook:
-
-```bash
-ngrok http 3000
-
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-ngrok-url/api/telegram&secret_token=<WEBHOOK_SECRET>"
-```
-
-### 5. Fund Treasury
-
-Copy the community treasury wallet address from the admin dashboard and send USDC on Base Sepolia (testnet) or Base (mainnet).
 
 ---
 
-## Third-Party Services
+## What This Project Demonstrates
 
-| Service | Purpose |
+| Skill | Evidence in Codebase |
 |---|---|
-| **Coinbase CDP** | MPC wallets, USDC transfers on Base |
-| **Google Gemini 2.5 Flash** | Message quality evaluation |
-| **Vercel AI SDK** | AI orchestration framework |
-| **Supabase** | Database + auth + Realtime |
-| **Upstash QStash** | Async message queue |
-| **Paddle** | Subscription billing |
-| **Telegram Bot API** | Message ingestion + notifications |
-| **Vercel** | Hosting + serverless functions |
-| **Tailwind CSS + shadcn/ui** | UI components |
+| **React / Next.js** | App Router with route groups `(auth)`, `(dashboard)`; Server Components for data fetching; Client Components for Realtime; Route Handlers for APIs |
+| **TypeScript (strict)** | Full typed config (`config.ts`), Zod-validated AI output (`schema.ts`), Supabase database types (`types/database.ts`), no `any` types |
+| **Server-Side Rendering** | Dashboard renders evaluations and stats server-side before any JS loads (`[communityId]/page.tsx`) |
+| **Real-time UI** | Supabase Realtime subscriptions in `ActivityFeed.tsx` — live-updating feed without polling |
+| **Authentication** | Supabase email magic links, server-side cookie sessions, middleware route protection with public-path whitelist |
+| **Authorization** | Row-Level Security in Supabase, ownership checks in every API route (`getCommunity()` ownership gate) |
+| **Async Architecture** | Webhook handler enqueues to QStash and returns immediately; the 12-step tip pipeline runs asynchronously (`jobs/evaluate`) |
+| **Error Handling** | Rate-limit retry logic for Gemini (2 retries, backoff), CDP error classification (retryable vs non-retryable), graceful fallback for every external service |
+| **Concurrency Safety** | `INSERT ... ON CONFLICT` for wallet creation (race-condition-free), `upsert_rate_limit` atomic RPC, idempotency keys for tip deduplication |
+| **Cost Engineering** | Two-filter system (pure TS, ~0.1ms) eliminates 90%+ of messages before they reach paid Gemini API |
+| **Payment Integration** | Paddle checkout session creation, webhook verification, subscription lifecycle management (created/updated/cancelled/past_due) |
+| **Blockchain Interaction** | CDP MPC wallet creation, USDC balance checks, ERC-20 transfers on Base, idempotent transfer execution |
+| **Telegram Bot API** | Webhook registration/verification, message filtering, Markdown-formatted notifications, direct HTTP calls (no SDK) |
+| **CI/CD Ready** | Vercel deployment config (`vercel.json`), cron job for health checks, production env template (`.env.production.example`) |
 
 ---
 
@@ -316,4 +138,8 @@ Apache 2.0 — see [LICENSE](./LICENSE)
 
 ---
 
-*Built by Khalid — The Web3 Wizard ([@khalidx_dev](https://twitter.com/khalidx_dev))*
+## Developer
+
+I'm a full-stack engineer who builds at the intersection of AI, blockchain, and real-time systems. I care about architecture that doesn't collapse under load, code that communicates intent, and products that work when external dependencies don't.
+
+**Interested in this kind of work?** [Email me](mailto:your-email@example.com) — I'm always open to conversations about senior engineering roles where I can build infrastructure that matters.

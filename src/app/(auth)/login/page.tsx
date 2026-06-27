@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { clientConfig } from '@/lib/config';
+import { clientConfig } from '@/lib/client-config';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {

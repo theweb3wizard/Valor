@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -278,7 +279,7 @@ export default function CommunitySettingsPage() {
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => {}}>Cancel</Button>
+                <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
                 <Button variant="destructive" onClick={deactivate}>
                   Deactivate
                 </Button>

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'node:crypto';
 import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
-import { serverConfig } from '@/lib/config';
-import { deleteBotWebhook, setBotWebhook } from '@/lib/telegram/notify';
+import { deleteBotWebhook } from '@/lib/telegram/notify';
 
 async function getCommunity(id: string) {
   const supabase = await createServerSupabase();
@@ -27,7 +25,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await getCommunity(await params.then((p) => p.id));
+    const { id } = await params;
+    const ctx = await getCommunity(id);
     if (!ctx) {
       return NextResponse.json({ error: 'not found' }, { status: 404 });
     }
@@ -48,7 +47,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await getCommunity(await params.then((p) => p.id));
+    const { id: patchId } = await params;
+    const ctx = await getCommunity(patchId);
     if (!ctx) {
       return NextResponse.json({ error: 'not found' }, { status: 404 });
     }
@@ -98,7 +98,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await getCommunity(await params.then((p) => p.id));
+    const { id: deleteId } = await params;
+    const ctx = await getCommunity(deleteId);
     if (!ctx) {
       return NextResponse.json({ error: 'not found' }, { status: 404 });
     }

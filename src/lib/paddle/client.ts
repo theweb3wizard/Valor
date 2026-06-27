@@ -1,5 +1,6 @@
 import { Paddle as PaddleSDK, Environment } from '@paddle/paddle-node-sdk';
-import { clientConfig, serverConfig } from '@/lib/config';
+import { clientConfig } from '@/lib/client-config';
+import { serverConfig } from '@/lib/config';
 import { createServiceSupabase } from '@/lib/supabase/server';
 
 let _paddle: PaddleSDK | null = null;
