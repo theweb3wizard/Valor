@@ -170,7 +170,7 @@ npm run build
 - **Admin analytics** — Per-community dashboards with tip trends, top contributors
 - **Telegram mini-app** — In-chat withdrawal flow via Telegram WebApp
 
----
+------
 
 ## License
 
