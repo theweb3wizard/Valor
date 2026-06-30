@@ -75,21 +75,21 @@ export interface Subscription {
 
 export interface Community {
   id: string;
-  owner_user_id: string;
-  plan_id: string | null;
+  ownerUserId: string;
+  planId: string | null;
   name: string;
-  telegram_chat_id: string;
-  bot_token: string;
-  tip_amount_low: number;
-  tip_amount_high: number;
-  daily_limit_per_user: number;
-  min_score: number;
-  treasury_wallet_id: string | null;
-  treasury_address: string | null;
-  usdc_balance: number;
-  eval_context: string;
-  is_active: boolean;
-  created_at: string;
+  telegramChatId: string;
+  botToken: string;
+  tipAmountLow: string;
+  tipAmountHigh: string;
+  dailyLimitPerUser: number;
+  minScore: number;
+  treasuryWalletId: string | null;
+  treasuryAddress: string | null;
+  usdcBalance: string;
+  evalContext: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface Wallet {

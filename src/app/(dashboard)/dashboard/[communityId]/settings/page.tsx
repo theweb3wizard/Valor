@@ -40,11 +40,11 @@ export default function CommunitySettingsPage() {
       .then((r) => r.json())
       .then((data) => {
         setCommunity(data);
-        setMinScore(data.min_score ?? 7);
-        setTipLow(data.tip_amount_low ?? 1);
-        setTipHigh(data.tip_amount_high ?? 2);
-        setDailyLimit(data.daily_limit_per_user ?? 3);
-        setEvalContext(data.eval_context ?? '');
+        setMinScore(Number(data.minScore ?? 7));
+        setTipLow(Number(data.tipAmountLow ?? 1));
+        setTipHigh(Number(data.tipAmountHigh ?? 2));
+        setDailyLimit(Number(data.dailyLimitPerUser ?? 3));
+        setEvalContext(data.evalContext ?? '');
       })
       .catch(() => toast.error('Failed to load community settings'));
   }, [communityId]);
@@ -86,7 +86,7 @@ export default function CommunitySettingsPage() {
   async function testConnection() {
     if (!community) return;
     try {
-      const res = await fetch(`https://api.telegram.org/bot${community.bot_token}/getWebhookInfo`);
+      const res = await fetch(`https://api.telegram.org/bot${community.botToken}/getWebhookInfo`);
       const data = await res.json();
       if (data.ok) {
         toast.success(
@@ -238,7 +238,7 @@ export default function CommunitySettingsPage() {
           <div className="text-sm space-y-1">
             <p>
               <span className="text-muted-foreground">Bot: </span>
-              <span className="font-mono">@{community.bot_token.slice(0, 20)}...</span>
+              <span className="font-mono">@{community.botToken?.slice(0, 20)}...</span>
             </p>
           </div>
           <div className="flex gap-3">
