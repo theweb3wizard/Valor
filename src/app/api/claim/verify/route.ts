@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceSupabase } from '@/lib/supabase/server';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, and, inArray } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,48 +11,51 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'telegramUserId required' }, { status: 400 });
     }
 
-    const supabase = createServiceSupabase();
+    const db = getDb();
+    if (!db) return NextResponse.json({ error: 'database not configured' }, { status: 500 });
 
-    const { data: wallets } = await supabase
-      .from('wallets')
-      .select('community_id, wallet_address, username')
-      .eq('telegram_user_id', telegramUserId);
+    const wallets = await db
+      .select({ communityId: schema.wallets.communityId, walletAddress: schema.wallets.walletAddress, username: schema.wallets.username })
+      .from(schema.wallets)
+      .where(eq(schema.wallets.telegramUserId, telegramUserId));
 
     if (!wallets || wallets.length === 0) {
       return NextResponse.json({ wallets: [] });
     }
 
-    const communityIds = wallets.map((w) => w.community_id);
+    const communityIds = wallets.map((w) => w.communityId);
 
-    const { data: communities } = await supabase
-      .from('communities')
-      .select('id, name')
-      .in('id', communityIds);
+    const communities = await db
+      .select({ id: schema.communities.id, name: schema.communities.name })
+      .from(schema.communities)
+      .where(inArray(schema.communities.id, communityIds));
 
     const communityMap = new Map(communities?.map((c) => [c.id, c.name]) ?? []);
 
-    const { data: tips } = await supabase
-      .from('tips')
-      .select('community_id, amount, transaction_status')
-      .eq('telegram_user_id', telegramUserId)
-      .in('transaction_status', ['confirmed', 'pending', 'failed']);
+    const tips = await db
+      .select({ communityId: schema.tips.communityId, amount: schema.tips.amount, transactionStatus: schema.tips.transactionStatus })
+      .from(schema.tips)
+      .where(and(
+        eq(schema.tips.telegramUserId, telegramUserId),
+        inArray(schema.tips.transactionStatus, ['confirmed', 'pending', 'failed'])
+      ));
 
     const earnedByCommunity = new Map<string, number>();
 
     for (const tip of tips ?? []) {
-      if (tip.transaction_status === 'confirmed') {
+      if (tip.transactionStatus === 'confirmed') {
         earnedByCommunity.set(
-          tip.community_id,
-          (earnedByCommunity.get(tip.community_id) ?? 0) + tip.amount
+          tip.communityId,
+          (earnedByCommunity.get(tip.communityId) ?? 0) + Number(tip.amount)
         );
       }
     }
 
     const walletInfo = wallets.map((w) => ({
-      communityId: w.community_id,
-      communityName: communityMap.get(w.community_id) ?? 'Unknown',
-      walletAddress: w.wallet_address,
-      available: earnedByCommunity.get(w.community_id) ?? 0,
+      communityId: w.communityId,
+      communityName: communityMap.get(w.communityId) ?? 'Unknown',
+      walletAddress: w.walletAddress,
+      available: earnedByCommunity.get(w.communityId) ?? 0,
     }));
 
     return NextResponse.json({ wallets: walletInfo });

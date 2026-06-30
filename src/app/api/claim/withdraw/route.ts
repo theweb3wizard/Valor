@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceSupabase } from '@/lib/supabase/server';
 import { executeWithdrawal } from '@/lib/cdp/transfers';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,14 +23,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'invalid amount' }, { status: 400 });
     }
 
-    const supabase = createServiceSupabase();
+    const db = getDb();
+    if (!db) return NextResponse.json({ error: 'database not configured' }, { status: 500 });
 
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('community_id', communityId)
-      .eq('telegram_user_id', telegramUserId)
-      .single();
+    const [wallet] = await db
+      .select()
+      .from(schema.wallets)
+      .where(and(
+        eq(schema.wallets.communityId, communityId),
+        eq(schema.wallets.telegramUserId, telegramUserId)
+      ))
+      .limit(1);
 
     if (!wallet) {
       return NextResponse.json({ error: 'wallet not found' }, { status: 404 });

@@ -50,6 +50,11 @@ export default function CommunitySettingsPage() {
   }, [communityId]);
 
   async function saveScoring() {
+    if (tipLow <= 0 || tipHigh <= 0 || dailyLimit < 1) {
+      toast.error('Invalid values: tip amounts must be positive, daily limit at least 1');
+      setSaving(null);
+      return;
+    }
     setSaving('scoring');
     const res = await fetch(`/api/community/${communityId}`, {
       method: 'PATCH',
@@ -97,19 +102,10 @@ export default function CommunitySettingsPage() {
 
   async function reRegisterWebhook() {
     if (!community) return;
-    const webhookUrl = `${window.location.origin}/api/webhook/${community.bot_token}`;
-    const secretToken = community.bot_token; // simplified for settings
-    const res = await fetch(
-      `https://api.telegram.org/bot${community.bot_token}/setWebhook`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: webhookUrl, secret_token: secretToken }),
-      }
-    );
+    const res = await fetch(`/api/community/${communityId}/re-register-webhook`, { method: 'POST' });
     const data = await res.json();
-    if (data.ok) toast.success('Webhook re-registered');
-    else toast.error('Failed to re-register webhook');
+    if (res.ok) toast.success('Webhook re-registered');
+    else toast.error(data.error || 'Failed to re-register webhook');
   }
 
   async function deactivate() {

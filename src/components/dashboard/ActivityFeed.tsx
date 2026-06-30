@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabaseBrowser } from '@/lib/supabase/client';
+import { useEffect, useState, useRef } from 'react';
 import { TipEvent } from '@/components/dashboard/TipEvent';
-import type { Evaluation, Tip } from '@/types/database';
+import type { InferSelectModel } from 'drizzle-orm';
+import { evaluations, tips } from '@/db/schema';
+type Evaluation = InferSelectModel<typeof evaluations>;
+type Tip = InferSelectModel<typeof tips>;
 
 interface Props {
   communityId: string;
@@ -22,67 +24,64 @@ export function ActivityFeed({ communityId, initialEvaluations, initialTips }: P
     const evals: FeedItem[] = (initialEvaluations ?? []).map((e) => ({
       type: 'evaluation' as const,
       data: e,
-      timestamp: e.evaluated_at,
+      timestamp: e.evaluatedAt?.toISOString() ?? '',
     }));
     const tips: FeedItem[] = (initialTips ?? []).map((t) => ({
       type: 'tip' as const,
       data: t,
-      timestamp: t.tipped_at,
+      timestamp: t.tippedAt?.toISOString() ?? '',
     }));
     return [...evals, ...tips].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   });
 
+  const latestTimestampRef = useRef<string>((() => {
+    const all = [...(initialEvaluations ?? []), ...(initialTips ?? [])] as (Evaluation | Tip)[];
+    const dates = all.map((item) => {
+      if ('evaluatedAt' in item && item.evaluatedAt) return item.evaluatedAt.getTime();
+      if ('tippedAt' in item && item.tippedAt) return item.tippedAt.getTime();
+      return 0;
+    });
+    const max = Math.max(...dates, 0);
+    return max ? new Date(max).toISOString() : '';
+  })());
+
   useEffect(() => {
-    const evalChannel = supabaseBrowser
-      .channel(`evaluations:${communityId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'evaluations',
-          filter: `community_id=eq.${communityId}`,
-        },
-        (payload) => {
-          const newEval = payload.new as Evaluation;
-          setItems((prev) => [
-            { type: 'evaluation', data: newEval, timestamp: newEval.evaluated_at },
-            ...prev,
-          ]);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/community/${communityId}/feed?since=${encodeURIComponent(latestTimestampRef.current)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data) return;
+        const newItems: FeedItem[] = [];
+        for (const e of data.evaluations ?? []) {
+          const ts = e.evaluatedAt?.toISOString() ?? '';
+          if (ts > latestTimestampRef.current) {
+            newItems.push({ type: 'evaluation', data: e, timestamp: ts });
+          }
         }
-      )
-      .subscribe();
-
-    const tipChannel = supabaseBrowser
-      .channel(`tips:${communityId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'tips',
-          filter: `community_id=eq.${communityId}`,
-        },
-        (payload) => {
-          const newTip = payload.new as Tip;
-          setItems((prev) => [
-            { type: 'tip', data: newTip, timestamp: newTip.tipped_at },
-            ...prev,
-          ]);
+        for (const t of data.tips ?? []) {
+          const ts = t.tippedAt?.toISOString() ?? '';
+          if (ts > latestTimestampRef.current) {
+            newItems.push({ type: 'tip', data: t, timestamp: ts });
+          }
         }
-      )
-      .subscribe();
+        if (newItems.length > 0) {
+          latestTimestampRef.current = newItems.reduce((l, i) => i.timestamp > l ? i.timestamp : l, latestTimestampRef.current);
+          setItems((prev) => [...newItems, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+        }
+      } catch {
+        // silently retry on next poll
+      }
+    }, 15000);
 
-    return () => {
-      supabaseBrowser.removeChannel(evalChannel);
-      supabaseBrowser.removeChannel(tipChannel);
-    };
+    return () => clearInterval(interval);
   }, [communityId]);
 
   return (
     <div className="space-y-2">
+
       {items.length === 0 && (
         <p className="text-sm text-muted-foreground py-8 text-center">
           No activity yet. Messages will appear here once the community starts receiving tips.

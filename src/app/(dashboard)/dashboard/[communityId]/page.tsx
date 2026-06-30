@@ -1,10 +1,17 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { createServerSupabase } from '@/lib/supabase/server';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, desc } from 'drizzle-orm';
 import { StatsRow } from '@/components/dashboard/StatsRow';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { Leaderboard } from '@/components/dashboard/Leaderboard';
-import type { Evaluation, Tip, Community } from '@/types/database';
+import type { InferSelectModel } from 'drizzle-orm';
+import { communities as communitiesTable, evaluations as evaluationsTable, tips as tipsTable } from '@/db/schema';
+
+type Community = InferSelectModel<typeof communitiesTable>;
+type Evaluation = InferSelectModel<typeof evaluationsTable>;
+type Tip = InferSelectModel<typeof tipsTable>;
 
 interface Props {
   params: Promise<{ communityId: string }>;
@@ -12,21 +19,18 @@ interface Props {
 
 export default async function CommunityDashboardPage({ params }: Props) {
   const { communityId } = await params;
-  const supabase = await createServerSupabase();
+  const db = getDb();
+  if (!db) notFound();
 
   let community: Community | null = null;
   let evaluations: Evaluation[] = [];
   let tips: Tip[] = [];
 
   try {
-    const { data: c } = await supabase
-      .from('communities')
-      .select('*')
-      .eq('id', communityId)
-      .single();
-    community = c;
-  } catch {
-    // fall through to notFound
+    const [c] = await db.select().from(schema.communities).where(eq(schema.communities.id, communityId));
+    community = c ?? null;
+  } catch (err) {
+    console.error(JSON.stringify({ step: 'fetch_community', communityId, error: err instanceof Error ? err.message : 'Unknown error' }));
   }
 
   if (!community) {
@@ -34,39 +38,35 @@ export default async function CommunityDashboardPage({ params }: Props) {
   }
 
   try {
-    const { data: e } = await supabase
-      .from('evaluations')
-      .select('*')
-      .eq('community_id', communityId)
-      .order('evaluated_at', { ascending: false })
+    const e = await db.select().from(schema.evaluations)
+      .where(eq(schema.evaluations.communityId, communityId))
+      .orderBy(desc(schema.evaluations.evaluatedAt))
       .limit(50);
-    evaluations = e ?? [];
-  } catch {
-    // evaluations unavailable — show empty
+    evaluations = e;
+  } catch (err) {
+    console.error(JSON.stringify({ step: 'fetch_evaluations', communityId, error: err instanceof Error ? err.message : 'Unknown error' }));
   }
 
   try {
-    const { data: t } = await supabase
-      .from('tips')
-      .select('*')
-      .eq('community_id', communityId)
-      .order('tipped_at', { ascending: false })
+    const t = await db.select().from(schema.tips)
+      .where(eq(schema.tips.communityId, communityId))
+      .orderBy(desc(schema.tips.tippedAt))
       .limit(50);
-    tips = t ?? [];
-  } catch {
-    // tips unavailable — show empty
+    tips = t;
+  } catch (err) {
+    console.error(JSON.stringify({ step: 'fetch_tips', communityId, error: err instanceof Error ? err.message : 'Unknown error' }));
   }
 
-  const totalTips = tips?.reduce((s, t) => s + (t.transaction_status === 'confirmed' ? t.amount : 0), 0) ?? 0;
+  const totalTips = tips?.reduce((s, t) => s + (t.transactionStatus === 'confirmed' ? Number(t.amount) : 0), 0) ?? 0;
   const totalEvals = evaluations?.length ?? 0;
-  const tipsFired = tips?.filter((t) => t.transaction_status === 'confirmed').length ?? 0;
+  const tipsFired = tips?.filter((t) => t.transactionStatus === 'confirmed').length ?? 0;
 
   const topContributors = tips
-    ?.filter((t) => t.transaction_status === 'confirmed')
+    ?.filter((t) => t.transactionStatus === 'confirmed')
     .reduce<Record<string, { username: string; total: number }>>((acc, t) => {
-      const key = t.telegram_user_id;
+      const key = t.telegramUserId;
       if (!acc[key]) acc[key] = { username: t.username, total: 0 };
-      acc[key].total += t.amount;
+      acc[key].total += Number(t.amount);
       return acc;
     }, {});
 
@@ -81,7 +81,7 @@ export default async function CommunityDashboardPage({ params }: Props) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{community.name}</h1>
           <p className="text-sm text-muted-foreground">
-            USDC Balance: <strong>{community.usdc_balance}</strong>
+            USDC Balance: <strong>{community.usdcBalance}</strong>
           </p>
         </div>
         <Link

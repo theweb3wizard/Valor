@@ -1,16 +1,17 @@
-import { updateSession } from '@/lib/supabase/middleware';
+import { auth } from '@/lib/auth';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const publicPaths = [
   '/',
   '/claim',
   '/login',
+  '/register',
   '/privacy',
   '/terms',
   '/refund',
   '/faq',
+  '/api/auth',
   '/api/webhook',
-  '/api/billing/webhook',
   '/api/health',
   '/_next',
   '/favicon.ico',
@@ -27,21 +28,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  try {
-    const { supabaseResponse, user } = await updateSession(request);
-
-    if (!user) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      return NextResponse.redirect(url);
-    }
-
-    return supabaseResponse;
-  } catch {
+  const session = await auth();
+  if (!session?.user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
+
+  return NextResponse.next();
 }
 
 export const config = {

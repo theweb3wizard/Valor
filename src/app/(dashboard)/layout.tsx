@@ -1,50 +1,33 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createServerSupabase } from '@/lib/supabase/server';
-import { serverConfig } from '@/lib/config';
+import { auth } from '@/lib/auth';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, desc } from 'drizzle-orm';
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  if (!serverConfig.hasSupabaseConfig) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-8">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold">Configuration Required</h1>
-          <p className="text-muted-foreground">
-            Supabase environment variables are not configured. Set{' '}
-            <code className="text-sm bg-muted px-1 rounded">NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
-            <code className="text-sm bg-muted px-1 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to use the dashboard.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const session = await auth();
+  if (!session?.user) redirect('/login');
+  const user = session.user;
 
-  let user = null;
   let communities: { id: string; name: string }[] = [];
 
   try {
-    const supabase = await createServerSupabase();
-    const { data: { user: u } } = await supabase.auth.getUser();
-    user = u;
-
-    if (user) {
-      const { data: c } = await supabase
-        .from('communities')
-        .select('id, name')
-        .eq('owner_user_id', user.id);
-      communities = c ?? [];
+    const db = getDb();
+    if (db) {
+      const c = await db.select({ id: schema.communities.id, name: schema.communities.name })
+        .from(schema.communities)
+        .where(eq(schema.communities.ownerUserId, user.id!))
+        .orderBy(desc(schema.communities.createdAt));
+      communities = c;
     }
   } catch {
-    // Supabase unavailable — render layout without auth
-  }
-
-  if (!user) {
-    redirect('/login');
+    // db unavailable — render layout without data
   }
 
   return (
@@ -54,6 +37,9 @@ export default async function DashboardLayout({
           <Image src="/logo.svg" alt="Valor" width={80} height={20} className="h-5 w-auto" priority />
         </Link>
         <nav className="space-y-1 flex-1">
+          {communities.length === 0 && (
+            <p className="text-sm text-muted-foreground px-3 py-2">No communities yet</p>
+          )}
           {communities.map((c) => (
             <Link
               key={c.id}
@@ -71,7 +57,19 @@ export default async function DashboardLayout({
           + New community
         </Link>
       </aside>
-      <main className="flex-1 p-6 lg:p-8 overflow-auto">{children}</main>
+      <main className="flex-1 p-4 lg:p-8 overflow-auto pb-20 lg:pb-8">{children}</main>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card p-3 flex items-center justify-center gap-4 lg:hidden">
+        {communities.slice(0, 5).map((c) => (
+          <Link
+            key={c.id}
+            href={`/dashboard/${c.id}`}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-20 text-center"
+          >
+            {c.name}
+          </Link>
+        ))}
+        <Link href="/onboard" className="text-xs text-primary shrink-0">+ New</Link>
+      </nav>
     </div>
   );
 }

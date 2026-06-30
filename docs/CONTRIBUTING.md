@@ -4,12 +4,11 @@
 
 - **Node.js** 20+ (tested with 22 LTS)
 - **npm** 10+
-- **Supabase project** (free tier) — sign up at [supabase.com](https://supabase.com)
+- **Neon Postgres project** (free tier) — sign up at [neon.tech](https://neon.tech)
 - **Telegram bot token** — create via [@BotFather](https://t.me/botfather)
 - **Gemini API key** — get from [aistudio.google.com](https://aistudio.google.com)
 - **Coinbase CDP API key** — generate at [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com)
 - **Upstash QStash** — create at [upstash.com](https://upstash.com)
-- **Paddle account** (optional for billing) — sign up at [paddle.com](https://paddle.com)
 
 ---
 
@@ -33,9 +32,9 @@ cp .env.production.example .env.local
 
 Required for app to function:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+AUTH_SECRET=your-auth-secret
+AUTH_URL=http://localhost:9002
 NEXT_PUBLIC_APP_URL=http://localhost:9002
 GEMINI_API_KEY=your-gemini-api-key
 ```
@@ -54,25 +53,27 @@ QSTASH_CURRENT_SIGNING_KEY=your-current-signing-key
 QSTASH_NEXT_SIGNING_KEY=your-next-signing-key
 ```
 
-Optional (billing):
+Optional (webhook security):
 ```env
-PADDLE_API_KEY=your-paddle-api-key
-PADDLE_WEBHOOK_SECRET=your-paddle-webhook-secret
-NEXT_PUBLIC_PADDLE_CLIENT_TOKEN=your-paddle-client-token
-NEXT_PUBLIC_PADDLE_ENVIRONMENT=sandbox
 CRON_SECRET=your-cron-secret
 ```
 
 ### 3. Database
 
-Run the migration files in `supabase/migrations/` in order in the Supabase SQL Editor:
+Create your schema in Neon by running Drizzle migrations:
 
-1. `001_initial_schema.sql` — Creates 8 tables
-2. `002_rls_policies.sql` — Enables Row-Level Security
-3. `003_rpc_functions.sql` — Creates `upsert_rate_limit` and `get_community_usage` functions
+```bash
+# Generate migration from schema
+npx drizzle-kit generate
 
-Then enable Realtime on `evaluations` and `tips` tables:
-- Supabase Dashboard → Database → Replication → Enable on `evaluations` and `tips`
+# Apply migration to Neon
+npx drizzle-kit migrate
+```
+
+Alternatively, push the schema directly (faster for development):
+```bash
+npx drizzle-kit push
+```
 
 ### 4. Run
 
@@ -136,8 +137,8 @@ npm run typecheck  # Run TypeScript type checking (tsc --noEmit)
 
 ### Imports
 Order imports in this sequence (separated by blank lines):
-1. External libraries (`react`, `next`, `@supabase/*`)
-2. Internal libraries (`@/lib/*`, `@/types/*`)
+1. External libraries (`react`, `next`, `next-auth`, `drizzle-orm`)
+2. Internal libraries (`@/lib/*`, `@/db/*`, `@/types/*`)
 3. Local components (`@/components/*`)
 
 No relative imports that go up more than one level — use `@/` aliases.
@@ -233,23 +234,25 @@ export function EditableField({ initialValue, onSave }: Props) {
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
+import { auth } from '@/lib/auth';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
     // 1. Auth check
-    const supabase = await createServerSupabase();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const session = await auth();
+    if (!session?.user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
 
     // 2. Business logic
-    const serviceSupabase = createServiceSupabase();
-    const { data } = await serviceSupabase.from('communities').select('*');
+    const db = getDb();
+    const rows = await db.select().from(schema.communities);
 
     // 3. Response
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(rows ?? []);
   } catch (err) {
     console.error(JSON.stringify({
       step: 'handler_name',

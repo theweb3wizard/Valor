@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Receiver } from '@upstash/qstash';
 import { createHash } from 'node:crypto';
 import { serverConfig } from '@/lib/config';
-import { createServiceSupabase } from '@/lib/supabase/server';
 import { evaluateMessage } from '@/lib/gemini/evaluate';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 import {
   getOrCreateContributorWallet,
   getWalletBalance,
@@ -66,54 +68,29 @@ export async function POST(request: NextRequest) {
 
   const { communityId, telegramUserId, username, messageId, messageText, parentMessageText } =
     payload;
-  const supabase = createServiceSupabase();
+  const db = getDb();
+  if (!db) return NextResponse.json({ error: 'database not configured' }, { status: 500 });
   const logCtx = { step: '', communityId, telegramUserId, messageId };
   const today = new Date().toISOString().split('T')[0];
 
-  const { data: community, error: communityError } = await supabase
-    .from('communities')
-    .select('*')
-    .eq('id', communityId)
-    .single();
+  const [community] = await db
+    .select()
+    .from(schema.communities)
+    .where(eq(schema.communities.id, communityId))
+    .limit(1);
 
-  if (communityError || !community || !community.is_active) {
+  if (!community || !community.isActive) {
     console.error(JSON.stringify({ ...logCtx, error: 'community not found or inactive' }));
     return NextResponse.json({ skipped: 'community inactive' });
   }
 
-  if (community.plan_id) {
-    const { data: plan } = await supabase
-      .from('plans')
-      .select('max_evals_monthly, max_tips_monthly')
-      .eq('id', community.plan_id)
-      .single();
-
-    if (plan) {
-      const { data: usage } = await supabase
-        .rpc('get_community_usage', { p_community_id: communityId });
-
-      const typedUsage = usage as unknown as
-        | { evals_this_month: number; tips_this_month: number }
-        | undefined;
-
-      if (typedUsage) {
-        if (plan.max_evals_monthly >= 0 && typedUsage.evals_this_month >= plan.max_evals_monthly) {
-          return NextResponse.json({ skipped: 'plan limit reached', reason: 'eval limit' });
-        }
-        if (plan.max_tips_monthly >= 0 && typedUsage.tips_this_month >= plan.max_tips_monthly) {
-          return NextResponse.json({ skipped: 'plan limit reached', reason: 'tip limit' });
-        }
-      }
-    }
-  }
-
   const idempotencyKey = computeIdempotencyKey(communityId, telegramUserId, messageId);
 
-  const { data: existingTip } = await supabase
-    .from('tips')
-    .select('id')
-    .eq('idempotency_key', idempotencyKey)
-    .single();
+  const [existingTip] = await db
+    .select({ id: schema.tips.id })
+    .from(schema.tips)
+    .where(eq(schema.tips.idempotencyKey, idempotencyKey))
+    .limit(1);
 
   if (existingTip) {
     return NextResponse.json({ skipped: 'duplicate' });
@@ -122,27 +99,26 @@ export async function POST(request: NextRequest) {
   const evaluation = await evaluateMessage({
     messageText,
     parentMessageText,
-    evalContext: community.eval_context ?? '',
-    minScore: community.min_score,
+    evalContext: community.evalContext ?? '',
+    minScore: community.minScore,
   });
 
-  const { data: evaluationRecord, error: evalError } = await supabase
-    .from('evaluations')
-    .insert({
-      community_id: communityId,
-      telegram_user_id: telegramUserId,
+  const [evaluationRecord] = await db
+    .insert(schema.evaluations)
+    .values({
+      communityId,
+      telegramUserId,
       username,
-      telegram_message_id: messageId,
-      message_content: messageText,
+      telegramMessageId: messageId,
+      messageContent: messageText,
       score: evaluation.score,
       reason: evaluation.reason,
-      should_tip: evaluation.should_tip,
+      shouldTip: evaluation.should_tip,
     })
-    .select()
-    .single();
+    .returning();
 
-  if (evalError) {
-    console.error(JSON.stringify({ ...logCtx, step: 'insert_evaluation', error: evalError.message }));
+  if (!evaluationRecord) {
+    console.error(JSON.stringify({ ...logCtx, step: 'insert_evaluation' }));
     return NextResponse.json({ tipped: false, score: evaluation.score });
   }
 
@@ -150,24 +126,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ tipped: false, score: evaluation.score });
   }
 
-  const { data: rateLimit } = await supabase
-    .from('rate_limits')
-    .select('*')
-    .eq('community_id', communityId)
-    .eq('telegram_user_id', telegramUserId)
-    .eq('date', today)
-    .single();
+  const [rateLimit] = await db
+    .select()
+    .from(schema.rateLimits)
+    .where(and(
+      eq(schema.rateLimits.communityId, communityId),
+      eq(schema.rateLimits.telegramUserId, telegramUserId),
+      eq(schema.rateLimits.date, today)
+    ))
+    .limit(1);
 
   if (rateLimit) {
     const cooldownMs = 30 * 60 * 1000;
-    const lastTipAt = rateLimit.last_tip_at ? new Date(rateLimit.last_tip_at).getTime() : 0;
+    const lastTipAt = rateLimit.lastTipAt ? new Date(rateLimit.lastTipAt).getTime() : 0;
     const cooldownElapsed = Date.now() - lastTipAt >= cooldownMs;
 
-    if (rateLimit.tips_today >= community.daily_limit_per_user || !cooldownElapsed) {
-      await supabase
-        .from('evaluations')
-        .update({ should_tip: false })
-        .eq('id', evaluationRecord.id);
+    if (rateLimit.tipsToday >= community.dailyLimitPerUser || !cooldownElapsed) {
+      await db
+        .update(schema.evaluations)
+        .set({ shouldTip: false })
+        .where(eq(schema.evaluations.id, evaluationRecord.id));
 
       return NextResponse.json({ tipped: false, reason: 'rate limited' });
     }
@@ -178,47 +156,47 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ tipped: false, reason: 'CDP not configured' });
   }
 
-  const tipAmount = evaluation.score >= 9 ? community.tip_amount_high : community.tip_amount_low;
+  const tipAmount = Number(evaluation.score >= 9 ? community.tipAmountHigh : community.tipAmountLow);
 
-  if (!community.treasury_address) {
-    await supabase.from('tips').insert({
-      community_id: communityId,
-      evaluation_id: evaluationRecord.id,
-      telegram_user_id: telegramUserId,
+  if (!community.treasuryAddress) {
+    await db.insert(schema.tips).values({
+      communityId,
+      evaluationId: evaluationRecord.id,
+      telegramUserId,
       username,
-      amount: tipAmount,
-      wallet_address: contributorWallet.walletAddress,
-      cdp_transfer_id: null,
-      tx_hash: null,
-      transaction_status: 'failed',
-      failure_reason: 'no_treasury',
-      idempotency_key: idempotencyKey,
+      amount: String(tipAmount),
+      walletAddress: contributorWallet.walletAddress,
+      cdpTransferId: null,
+      txHash: null,
+      transactionStatus: 'failed',
+      failureReason: 'no_treasury',
+      idempotencyKey,
     });
     return NextResponse.json({ tipped: false, reason: 'no treasury configured' });
   }
 
-  const balanceAtomic = await getWalletBalance(community.treasury_address);
+  const balanceAtomic = await getWalletBalance(community.treasuryAddress);
   const balanceUsdc = Number(balanceAtomic) / 1_000_000;
 
   if (balanceUsdc < tipAmount + 0.5) {
-    await supabase.from('tips').insert({
-      community_id: communityId,
-      evaluation_id: evaluationRecord.id,
-      telegram_user_id: telegramUserId,
+    await db.insert(schema.tips).values({
+      communityId,
+      evaluationId: evaluationRecord.id,
+      telegramUserId,
       username,
-      amount: tipAmount,
-      wallet_address: contributorWallet.walletAddress,
-      cdp_transfer_id: null,
-      tx_hash: null,
-      transaction_status: 'failed',
-      failure_reason: 'insufficient_treasury',
-      idempotency_key: idempotencyKey,
+      amount: String(tipAmount),
+      walletAddress: contributorWallet.walletAddress,
+      cdpTransferId: null,
+      txHash: null,
+      transactionStatus: 'failed',
+      failureReason: 'insufficient_treasury',
+      idempotencyKey,
     });
     return NextResponse.json({ tipped: false, reason: 'insufficient treasury' });
   }
 
   const transferResult = await executeTip({
-    treasuryWalletAddress: community.treasury_address,
+    treasuryWalletAddress: community.treasuryAddress,
     contributorWalletAddress: contributorWallet.walletAddress,
     amount: tipAmount,
     idempotencyKey,
@@ -232,52 +210,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: transferResult.error }, { status: 500 });
     }
 
-    await supabase.from('tips').insert({
-      community_id: communityId,
-      evaluation_id: evaluationRecord.id,
-      telegram_user_id: telegramUserId,
+    await db.insert(schema.tips).values({
+      communityId,
+      evaluationId: evaluationRecord.id,
+      telegramUserId,
       username,
-      amount: tipAmount,
-      wallet_address: contributorWallet.walletAddress,
-      cdp_transfer_id: transferResult.transferId,
-      tx_hash: transferResult.txHash,
-      transaction_status: 'failed',
-      failure_reason: transferResult.error,
-      idempotency_key: idempotencyKey,
+      amount: String(tipAmount),
+      walletAddress: contributorWallet.walletAddress,
+      cdpTransferId: transferResult.transferId,
+      txHash: transferResult.txHash,
+      transactionStatus: 'failed',
+      failureReason: transferResult.error,
+      idempotencyKey,
     });
     return NextResponse.json({ tipped: false, error: transferResult.error });
   }
 
-  const { error: tipError } = await supabase.from('tips').insert({
-    community_id: communityId,
-    evaluation_id: evaluationRecord.id,
-    telegram_user_id: telegramUserId,
-    username,
-    amount: tipAmount,
-    wallet_address: contributorWallet.walletAddress,
-    cdp_transfer_id: transferResult.transferId,
-    tx_hash: transferResult.txHash,
-    transaction_status: 'confirmed',
-    idempotency_key: idempotencyKey,
-  });
-
-  if (tipError) {
-    console.error(JSON.stringify({ ...logCtx, step: 'insert_tip', error: tipError.message }));
+  try {
+    await db.insert(schema.tips).values({
+      communityId,
+      evaluationId: evaluationRecord.id,
+      telegramUserId,
+      username,
+      amount: String(tipAmount),
+      walletAddress: contributorWallet.walletAddress,
+      cdpTransferId: transferResult.transferId,
+      txHash: transferResult.txHash,
+      transactionStatus: 'confirmed',
+      idempotencyKey,
+    });
+  } catch (err) {
+    console.error(JSON.stringify({ ...logCtx, step: 'insert_tip', error: err instanceof Error ? err.message : 'unknown' }));
   }
 
-  await supabase.rpc('upsert_rate_limit', {
-    p_community_id: communityId,
-    p_telegram_user_id: telegramUserId,
-    p_date: today,
-    p_last_tip_at: new Date().toISOString(),
-  });
+  await db.execute(
+    sql`INSERT INTO rate_limits (community_id, telegram_user_id, date, tips_today, last_tip_at)
+        VALUES (${communityId}, ${telegramUserId}, ${today}, 1, NOW())
+        ON CONFLICT (community_id, telegram_user_id, date)
+        DO UPDATE SET tips_today = rate_limits.tips_today + 1, last_tip_at = NOW()`
+  );
 
   await refreshTreasuryBalance(communityId);
 
   try {
     await sendTipAnnouncement({
-      botToken: community.bot_token,
-      chatId: community.telegram_chat_id,
+      botToken: community.botToken,
+      chatId: community.telegramChatId,
       username,
       telegramUserId,
       amount: tipAmount,

@@ -12,7 +12,7 @@ Valor is a serverless autonomous agent built on five primitives:
 2. **Gemini + Vercel AI SDK** — reasoning layer. Evaluates message quality, returns structured decisions.
 3. **Coinbase CDP** — financial execution layer. Creates MPC wallets, transfers USDC.
 4. **Upstash QStash** — async queue. Decouples the webhook from the tip pipeline.
-5. **Supabase** — state layer. PostgreSQL for persistence, Realtime for live dashboard, Auth for session management.
+5. **Neon + Drizzle** — state layer. Serverless Postgres via Neon, type-safe queries via Drizzle ORM.
 
 These primitives are loosely coupled. Each can be replaced or upgraded independently.
 
@@ -42,14 +42,13 @@ Telegram Group Message
 │                                         │
 │   1. Verify QStash signature             │
 │   2. Load community config               │
-│   3. Plan limit check (RPC)              │
-│   4. Idempotency key check               │
-│   5. Gemini evaluation (structured out)  │
-│   6. Rate limit check (3 Supabase reads) │
-│   7. Wallet resolution (CDP)             │
-│   8. Treasury balance check (CDP)        │
-│   9. USDC transfer (CDP, Base chain)     │
-│  10. Database writes (Supabase)          │
+│   3. Idempotency key check               │
+│   4. Gemini evaluation (structured out)  │
+│   5. Rate limit check (3 DB reads)       │
+│   6. Wallet resolution (CDP)             │
+│   7. Treasury balance check (CDP)        │
+│   8. USDC transfer (CDP, Base chain)     │
+│   9. Database writes (Drizzle)           │
 │  11. Telegram notification (async)       │
 │  12. Treasury balance refresh            │
 └──────────────────────────────────────────┘
@@ -64,21 +63,23 @@ Telegram Group Message
 ```
 src/app/
 ├── (auth)/                    # Route Group — no layout inheritance from dashboard
-│   ├── login/page.tsx         # Public — email magic link form
-│   └── callback/route.ts      # Public — Supabase auth code exchange
+│   ├── login/page.tsx         # Public — email + password form
+│   └── register/page.tsx      # Public — registration form
 ├── (dashboard)/               # Route Group — authenticated layout (sidebar)
-│   ├── layout.tsx             # Server Component — auth check + sidebar
+│   ├── layout.tsx             # Server Component — auth check + sidebar + mobile nav
 │   └── dashboard/
 │       ├── page.tsx           # Redirects to first community
 │       └── [communityId]/
-│           ├── page.tsx       # Stats, Activity Feed, Leaderboard
+│           ├── page.tsx       # Stats, Activity Feed (polling), Leaderboard
 │           └── settings/
 │               └── page.tsx   # Client Component — scoring, context, bot status
 ├── api/                       # Route Handlers — no UI, bare JSON responses
-│   ├── auth/signout/
-│   ├── billing/checkout, webhook/
+│   ├── auth/[...nextauth]/    # Auth.js handler (GET + POST)
+│   ├── auth/register/         # Registration with bcrypt
 │   ├── claim/verify, withdraw/
 │   ├── community/, [id]/, verify-bot/
+│   ├── community/[id]/feed/   # Polling endpoint for activity feed
+│   ├── community/[id]/re-register-webhook/
 │   ├── health/
 │   ├── jobs/evaluate/
 │   └── webhook/[botToken]/
@@ -140,23 +141,23 @@ RootLayout (dark theme, Toaster)
 
 Valor has zero global state libraries (no Redux, Zustand, Jotai). State is managed by:
 
-### Server State — Supabase PostgreSQL
-All persistent state lives in PostgreSQL. The application never derives state from in-memory variables. This includes:
+### Server State — Neon PostgreSQL via Drizzle
+All persistent state lives in Postgres on Neon. The application uses **Drizzle ORM** for all queries — never raw SQL. This includes:
 - Community configuration (thresholds, tokens, balances)
 - Evaluation records (scores, reasons, timestamps)
 - Tip records (amounts, statuses, tx hashes)
 - Wallet mappings (telegram_user_id → CDP wallet)
 - Rate limits (daily tip counts, cooldowns)
-- User subscriptions and plans
+- Auth sessions, accounts, and verification tokens (via Auth.js Drizzle adapter)
 
-### Session State — Supabase Auth + Cookies
-Authentication state is stored in HTTP-only cookies managed by `@supabase/ssr`. The middleware refreshes the session on every request. Server Components read the session via `createServerSupabase()`. Client Components read the session via `supabaseBrowser.auth.getSession()`.
+### Session State — Auth.js + JWT + Cookies
+Authentication state is managed by **Auth.js v5** using the `credentials` provider with bcrypt password hashing. Sessions use JWT strategy (no database session lookups on every request). The middleware protects routes with a public-path whitelist. Server Components read the session via `auth()`. Client Components communicate through API routes.
 
 ### UI State — React `useState` + `useCallback`
-Transient UI state (form inputs, step progress, loading flags) lives in individual components via `useState`. The onboarding wizard passes state between steps via callbacks (`handleNameNext`, `handleBotVerified`, `handleCommunityCreated`). No lifting to a global store — each page manages its own UI state.
+Transient UI state (form inputs, step progress, loading flags) lives in individual components via `useState`. The onboarding wizard passes state between steps via callbacks. No lifting to a global store — each page manages its own UI state.
 
-### Real-time State — Supabase Realtime
-Live activity feed state is managed by Supabase Realtime subscriptions. Initial data is server-rendered (SSR). New evaluations and tips arrive via PostgreSQL logical replication channels and are prepended to the feed. The subscription is scoped to the current community via `filter: community_id=eq.${communityId}`.
+### Live Feed State — Polling (15-second interval)
+The activity feed uses **15-second polling** via `setInterval` to a dedicated API endpoint (`/api/community/[id]/feed?since=<timestamp>`). Initial data is server-rendered (SSR). New evaluations and tips are fetched as JSON and prepended to the feed. No WebSocket or Realtime infrastructure needed.
 
 **Why no global store:** The app has no shared client-side state that spans multiple pages. Dashboard state is scoped to the community page. Onboarding state is scoped to the wizard. Claim state is scoped to the claim page. Adding a global store would increase bundle size and complexity with zero benefit.
 
@@ -167,18 +168,18 @@ Live activity feed state is managed by Supabase Realtime subscriptions. Initial 
 Environment variables are validated at import time through two typed config modules:
 
 ### `lib/config.ts` (Server-only)
-Validates server-side variables (API keys, secrets). Uses `warnEnv()` for critical variables (logs a warning if missing) and `optionalEnv()` for features that can degrade gracefully. Exports `serverConfig` with computed booleans:
-- `hasSupabaseConfig` — gates all database operations
+Validates server-side variables (API keys, secrets). Uses `warnEnv()` for critical variables (logs a warning if missing — evaluates to blank string) and `optionalEnv()` for features that can degrade gracefully. Also checks for **placeholder values** (`"v"`, `"your-"`, `"changeme"`, etc.) and treats them as unconfigured. Exports `serverConfig` with computed booleans:
+- `hasDatabaseConfig` — gates all database operations
 - `hasGeminiConfig` — gates AI evaluation
 - `hasCdpConfig` — gates wallet operations
 - `hasQstashConfig` — gates async job queue
-- `hasPaddleConfig` — gates billing
+- `hasCronSecret` — gates webhook secret verification
 
 ### `lib/client-config.ts` (Client-safe)
 Exposes only `NEXT_PUBLIC_*` variables. Same pattern — `warnEnv()` for critical vars, `optionalEnv()` for optional ones.
 
 ### Graceful Degradation Pattern
-Every service client (Supabase, CDP, QStash, Paddle, Gemini) follows the same pattern:
+Every service client (Neon/Drizzle, CDP, QStash, Gemini) follows the same pattern:
 
 ```typescript
 function getXxxClient(): XxxClient | null {
@@ -216,13 +217,13 @@ Callers check for `null` before using the client. If a service is unavailable, t
 ## Security Model
 
 ### Authentication
-- Supabase Auth with email magic links — no password storage
-- Server-side cookie sessions via `@supabase/ssr`
-- Session refresh on every request via middleware
-- No JWT manipulation on the client — Supabase handles token rotation
+- Auth.js v5 with credentials provider — email + password with bcrypt hashing
+- JWT session strategy (no DB lookups on every request)
+- Middleware protects all routes except public whitelist
+- Registration endpoint hashes passwords before storing in users table
 
 ### Authorization (Route Level)
-- Middleware whitelist: public paths (`/`, `/claim`, `/api/webhook`, `/api/health`, etc.)
+- Middleware whitelist: public paths (`/`, `/login`, `/register`, `/claim`, `/api/webhook`, `/api/health`, `/api/auth`, `/faq`, `/privacy`, `/terms`, `/refund`)
 - All other paths require authentication — redirects to `/login`
 - Dashboard layout has a secondary auth check (defense in depth)
 
@@ -230,13 +231,11 @@ Callers check for `null` before using the client. If a service is unavailable, t
 - API routes verify ownership before returning community data
 - The `getCommunity(id)` helper checks `community.owner_user_id !== user.id`
 - PATCH/DELETE operations go through the same ownership gate
-- Service role Supabase client is used only in API routes — never exposed to the client
 
 ### Webhook Security
 - Each community's Telegram webhook uses a derived secret token: `sha256(botToken + cronSecret)`
 - The webhook handler verifies the `X-Telegram-Bot-Api-Secret-Token` header before processing
 - QStash job processor verifies the `upstash-signature` header using the SDK's receiver utility
-- Paddle webhook verifies the `paddle-signature` header using the SDK's signature validation
 
 ### Blockchain Security
 - No private keys or seed phrases stored in the database
@@ -253,18 +252,31 @@ Rate limiting has four independent layers:
 
 ---
 
-## Database Schema (7 Tables)
+## Database Schema (11 Tables via Drizzle ORM)
 
-- `plans` — Subscription tier definitions (free / starter / pro / business)
-- `users` — Mirrors Supabase `auth.users` for row-level references
-- `subscriptions` — Active Paddle subscription tracking
-- `communities` — Per-community configuration (thresholds, tokens, treasury)
+### Core Tables
+- `plans` — Plan definitions (legacy, unused — no plan limits enforced)
+- `users` — Application users with email, name, bcrypt password hash
+- `subscriptions` — Subscription tracking (legacy, unused — app is free)
+- `communities` — Per-community configuration (thresholds, tokens, treasury, scoring params)
 - `wallets` — CDP wallet mappings (community + telegram_user → CDP wallet)
 - `evaluations` — AI evaluation results (score, reason, should_tip)
 - `tips` — Tip records with idempotency keys (prevents duplicates)
 - `rate_limits` — Daily tip counting with atomic upsert
 
-Key constraints:
+### Auth.js Adapter Tables
+- `accounts` — OAuth/credentials account links (OAuth not used, schema for adapter compatibility)
+- `sessions` — Auth.js sessions tracked for JWT strategy
+- `verificationTokens` — Verification token storage (for future email verification)
+
+### Key Constraints
 - `wallets`: `UNIQUE(community_id, telegram_user_id)` — one wallet per user per community
 - `tips`: `idempotency_key UNIQUE` — prevents duplicate tips
 - `rate_limits`: `UNIQUE(community_id, telegram_user_id, date)` — one rate limit row per user per day per community
+
+### Drizzle ORM Patterns
+All queries use Drizzle's type-safe query builder — no raw SQL except for the rate limit upsert. Example patterns:
+- `db.select().from(schema.communities).where(eq(schema.communities.id, id))`
+- `db.insert(schema.tips).values({...}).returning()`
+- Numeric columns from `pg` return as `string` — use `Number()` where arithmetic is needed
+- Timestamp columns return `Date | null` — use `.toISOString()` for serialization

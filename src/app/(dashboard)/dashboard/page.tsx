@@ -1,24 +1,20 @@
 import { redirect } from 'next/navigation';
-import { createServerSupabase } from '@/lib/supabase/server';
+import { auth } from '@/lib/auth';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export default async function DashboardPage() {
-  let supabase;
-  try {
-    supabase = await createServerSupabase();
-  } catch {
-    redirect('/login');
-  }
+  const session = await auth();
+  if (!session?.user) redirect('/login');
+  const user = session.user;
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const db = getDb();
+  if (!db) redirect('/login');
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  const { data: communities } = await supabase
-    .from('communities')
-    .select('id')
-    .eq('owner_user_id', user.id)
+  const communities = await db.select({ id: schema.communities.id })
+    .from(schema.communities)
+    .where(eq(schema.communities.ownerUserId, user.id!))
     .limit(1);
 
   if (!communities || communities.length === 0) {

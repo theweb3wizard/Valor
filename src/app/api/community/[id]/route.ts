@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
+import { auth } from '@/lib/auth';
 import { deleteBotWebhook } from '@/lib/telegram/notify';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 async function getCommunity(id: string) {
-  const supabase = await createServerSupabase();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const session = await auth();
+  if (!session?.user) return null;
+  const user = session.user;
 
-  if (authError || !user) return null;
+  const db = getDb();
+  if (!db) return null;
 
-  const serviceSupabase = createServiceSupabase();
-  const { data: community } = await serviceSupabase
-    .from('communities')
-    .select('*')
-    .eq('id', id)
-    .single();
+  const [community] = await db.select().from(schema.communities).where(eq(schema.communities.id, id)).limit(1);
 
-  if (!community || community.owner_user_id !== user.id) return null;
+  if (!community || community.ownerUserId !== user.id) return null;
 
-  return { user, community, serviceSupabase };
+  return { user, community, db };
 }
 
 export async function GET(
@@ -59,10 +59,20 @@ export async function PATCH(
       'daily_limit_per_user', 'eval_context', 'is_active',
     ];
 
+    const columnMap: Record<string, string> = {
+      name: 'name',
+      min_score: 'minScore',
+      tip_amount_low: 'tipAmountLow',
+      tip_amount_high: 'tipAmountHigh',
+      daily_limit_per_user: 'dailyLimitPerUser',
+      eval_context: 'evalContext',
+      is_active: 'isActive',
+    };
+
     const updates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (body[key] !== undefined) {
-        updates[key] = body[key];
+        updates[columnMap[key]] = body[key];
       }
     }
 
@@ -70,15 +80,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'no valid fields' }, { status: 400 });
     }
 
-    const { data: updated, error } = await ctx.serviceSupabase
-      .from('communities')
-      .update(updates)
-      .eq('id', ctx.community.id)
-      .select()
-      .single();
+    const [updated] = await ctx.db.update(schema.communities).set(updates).where(eq(schema.communities.id, ctx.community.id)).returning();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!updated) {
+      return NextResponse.json({ error: 'update failed' }, { status: 500 });
     }
 
     return NextResponse.json(updated);
@@ -104,14 +109,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'not found' }, { status: 404 });
     }
 
-    const { community, serviceSupabase } = ctx;
+    const { community, db } = ctx;
 
-    await deleteBotWebhook({ botToken: community.bot_token });
+    await deleteBotWebhook({ botToken: community.botToken });
 
-    await serviceSupabase
-      .from('communities')
-      .update({ is_active: false })
-      .eq('id', community.id);
+    await db.update(schema.communities).set({ isActive: false }).where(eq(schema.communities.id, community.id));
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {

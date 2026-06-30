@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceSupabase } from '@/lib/supabase/server';
 import { serverConfig } from '@/lib/config';
 import { shouldEvaluate, type TelegramMessage } from '@/lib/telegram/filters';
 import { enqueueEvaluationJob } from '@/lib/qstash/client';
 import { createHash } from 'node:crypto';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 function computeWebhookSecret(botToken: string): string {
   const secret = serverConfig.hasCronSecret ? serverConfig.cronSecret : 'dev-fallback-secret';
@@ -19,19 +21,22 @@ export async function POST(
   try {
     const { botToken } = await params;
 
-    const supabase = createServiceSupabase();
+    const db = getDb();
+    if (!db) {
+      return NextResponse.json({ error: 'database not configured' }, { status: 500 });
+    }
 
-    const { data: community, error } = await supabase
-      .from('communities')
-      .select('id, bot_token, telegram_chat_id')
-      .eq('bot_token', botToken)
-      .single();
+    const [community] = await db
+      .select({ id: schema.communities.id, botToken: schema.communities.botToken, telegramChatId: schema.communities.telegramChatId })
+      .from(schema.communities)
+      .where(eq(schema.communities.botToken, botToken))
+      .limit(1);
 
-    if (error || !community) {
+    if (!community) {
       return NextResponse.json({ error: 'community not found' }, { status: 404 });
     }
 
-    const expectedSecret = computeWebhookSecret(community.bot_token);
+    const expectedSecret = computeWebhookSecret(community.botToken);
     const providedSecret = req.headers.get('x-telegram-bot-api-secret-token');
 
     if (!providedSecret || providedSecret !== expectedSecret) {
@@ -51,11 +56,11 @@ export async function POST(
       from: { id: number; is_bot?: boolean; username?: string };
     };
 
-    if (community.telegram_chat_id?.startsWith('pending-') && message.chat?.id) {
-      await supabase
-        .from('communities')
-        .update({ telegram_chat_id: String(message.chat.id) })
-        .eq('id', community.id);
+    if (community.telegramChatId?.startsWith('pending-') && message.chat?.id) {
+      await db
+        .update(schema.communities)
+        .set({ telegramChatId: String(message.chat.id) })
+        .where(eq(schema.communities.id, community.id));
     }
 
     if (!shouldEvaluate(message)) {

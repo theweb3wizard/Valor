@@ -1,5 +1,7 @@
 import { getCdpClient, getCdpNetwork, USDC_CONTRACT_ADDRESS } from '@/lib/cdp/client';
-import { createServiceSupabase } from '@/lib/supabase/server';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function createCommunityTreasury(communityId: string): Promise<{
   walletId: string;
@@ -10,16 +12,14 @@ export async function createCommunityTreasury(communityId: string): Promise<{
   const account = await cdp.evm.createAccount({ name: `treasury-${communityId}` });
   const networkAccount = await account.useNetwork(getCdpNetwork() as 'base');
 
-  const supabase = createServiceSupabase();
-  const { error } = await supabase
-    .from('communities')
-    .update({
-      treasury_wallet_id: account.name ?? account.address,
-      treasury_address: networkAccount.address,
+  const db = getDb();
+  if (!db) return null;
+  await db.update(schema.communities)
+    .set({
+      treasuryWalletId: account.name ?? account.address,
+      treasuryAddress: networkAccount.address,
     })
-    .eq('id', communityId);
-
-  if (error) throw new Error(`Failed to update community treasury: ${error.message}`);
+    .where(eq(schema.communities.id, communityId));
 
   return {
     walletId: account.name ?? account.address,
@@ -35,17 +35,20 @@ export async function getOrCreateContributorWallet(
   cdpWalletId: string;
   walletAddress: string;
 } | null> {
-  const supabase = createServiceSupabase();
+  const db = getDb();
+  if (!db) return null;
 
-  const { data: existing } = await supabase
-    .from('wallets')
-    .select('*')
-    .eq('community_id', communityId)
-    .eq('telegram_user_id', telegramUserId)
-    .single();
+  const [existing] = await db.select()
+    .from(schema.wallets)
+    .where(
+      and(
+        eq(schema.wallets.communityId, communityId),
+        eq(schema.wallets.telegramUserId, telegramUserId)
+      )
+    );
 
   if (existing) {
-    return { cdpWalletId: existing.cdp_wallet_id, walletAddress: existing.wallet_address };
+    return { cdpWalletId: existing.cdpWalletId, walletAddress: existing.walletAddress };
   }
 
   const cdp = getCdpClient();
@@ -55,37 +58,33 @@ export async function getOrCreateContributorWallet(
   });
   const networkAccount = await account.useNetwork(getCdpNetwork() as 'base');
 
-  const { data: inserted, error } = await supabase
-    .from('wallets')
-    .insert({
-      community_id: communityId,
-      telegram_user_id: telegramUserId,
-      username,
-      cdp_wallet_id: account.name ?? account.address,
-      wallet_address: networkAccount.address,
-    })
-    .select()
-    .single();
-
-  if (error && error.code === '23505') {
-    const { data: retry } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('community_id', communityId)
-      .eq('telegram_user_id', telegramUserId)
-      .single();
-
-    if (retry) {
-      return { cdpWalletId: retry.cdp_wallet_id, walletAddress: retry.wallet_address };
+  try {
+    const [inserted] = await db.insert(schema.wallets)
+      .values({
+        communityId,
+        telegramUserId,
+        username,
+        cdpWalletId: account.name ?? account.address,
+        walletAddress: networkAccount.address,
+      })
+      .returning();
+    return { cdpWalletId: inserted.cdpWalletId, walletAddress: inserted.walletAddress };
+  } catch (err: any) {
+    if (err.code === '23505') {
+      const [retry] = await db.select()
+        .from(schema.wallets)
+        .where(
+          and(
+            eq(schema.wallets.communityId, communityId),
+            eq(schema.wallets.telegramUserId, telegramUserId)
+          )
+        );
+      if (retry) {
+        return { cdpWalletId: retry.cdpWalletId, walletAddress: retry.walletAddress };
+      }
     }
+    throw new Error(`Failed to insert wallet: ${err.message}`);
   }
-
-  if (error) throw new Error(`Failed to insert wallet: ${error.message}`);
-
-  return {
-    cdpWalletId: inserted!.cdp_wallet_id,
-    walletAddress: inserted!.wallet_address,
-  };
 }
 
 export async function getWalletBalance(walletAddress: string): Promise<bigint> {
@@ -106,22 +105,20 @@ export async function getWalletBalance(walletAddress: string): Promise<bigint> {
 }
 
 export async function refreshTreasuryBalance(communityId: string): Promise<void> {
-  const supabase = createServiceSupabase();
+  const db = getDb();
+  if (!db) return;
 
-  const { data: community, error } = await supabase
-    .from('communities')
-    .select('treasury_address')
-    .eq('id', communityId)
-    .single();
+  const [community] = await db.select({ treasuryAddress: schema.communities.treasuryAddress })
+    .from(schema.communities)
+    .where(eq(schema.communities.id, communityId));
 
-  if (error || !community?.treasury_address) return;
+  if (!community?.treasuryAddress) return;
 
-  const balance = await getWalletBalance(community.treasury_address);
+  const balance = await getWalletBalance(community.treasuryAddress);
   const divisor = 10n ** 6n;
   const usdcAmount = Number(balance / divisor);
 
-  await supabase
-    .from('communities')
-    .update({ usdc_balance: usdcAmount })
-    .eq('id', communityId);
+  await db.update(schema.communities)
+    .set({ usdcBalance: String(usdcAmount) })
+    .where(eq(schema.communities.id, communityId));
 }

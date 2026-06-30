@@ -23,7 +23,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="antialiased bg-background text-foreground">
         {children}
-        <Toaster richColors position="top-right" />
+        <Toaster richColors position="top-right" duration={4000} visibleToasts={5} closeButton />
       </body>
     </html>
   );

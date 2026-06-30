@@ -16,9 +16,5 @@ const optionalEnv = (name: string, defaultValue: string = ''): string => {
 };
 
 export const clientConfig = {
-  supabaseUrl: warnEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL),
-  supabaseAnonKey: warnEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-  paddleClientToken: optionalEnv('NEXT_PUBLIC_PADDLE_CLIENT_TOKEN'),
-  paddleEnvironment: optionalEnv('NEXT_PUBLIC_PADDLE_ENVIRONMENT', 'sandbox'),
   appUrl: warnEnv('NEXT_PUBLIC_APP_URL', process.env.NEXT_PUBLIC_APP_URL),
 };

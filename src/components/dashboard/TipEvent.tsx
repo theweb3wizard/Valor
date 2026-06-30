@@ -1,4 +1,7 @@
-import type { Evaluation, Tip } from '@/types/database';
+import type { InferSelectModel } from 'drizzle-orm';
+import { evaluations, tips } from '@/db/schema';
+type Evaluation = InferSelectModel<typeof evaluations>;
+type Tip = InferSelectModel<typeof tips>;
 
 type FeedItem = {
   type: 'evaluation' | 'tip';
@@ -15,7 +18,7 @@ export function TipEvent({ item }: Props) {
   const tip = isTip ? (item.data as Tip) : null;
   const evaluation = item.data as Evaluation;
 
-  const borderClass = isTip && tip?.transaction_status === 'confirmed'
+  const borderClass = isTip && tip?.transactionStatus === 'confirmed'
     ? 'border-l-2 border-primary'
     : 'border-l-2 border-muted';
 
@@ -27,7 +30,7 @@ export function TipEvent({ item }: Props) {
           {new Date(item.timestamp).toLocaleDateString()}
         </span>
       </div>
-      <p className="text-sm text-muted-foreground line-clamp-2">{evaluation.message_content}</p>
+      <p className="text-sm text-muted-foreground line-clamp-2">{evaluation.messageContent}</p>
       <div className="flex items-center gap-3">
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -40,12 +43,12 @@ export function TipEvent({ item }: Props) {
         >
           {evaluation.score}/10
         </span>
-        {isTip && tip?.transaction_status === 'confirmed' && (
+        {isTip && tip?.transactionStatus === 'confirmed' && (
           <>
             <span className="text-sm font-semibold text-success">+{tip.amount} USDC</span>
-            {tip.tx_hash && (
+            {tip.txHash && (
               <a
-                href={`https://basescan.org/tx/${tip.tx_hash}`}
+                href={`https://basescan.org/tx/${tip.txHash}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs text-muted-foreground underline-offset-2 hover:underline ml-auto"
@@ -55,7 +58,7 @@ export function TipEvent({ item }: Props) {
             )}
           </>
         )}
-        {isTip && tip?.transaction_status === 'failed' && (
+        {isTip && tip?.transactionStatus === 'failed' && (
           <span className="text-xs text-destructive">Failed</span>
         )}
       </div>

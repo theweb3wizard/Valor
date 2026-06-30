@@ -1,7 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
-const faqs = [
+const faqs: { q: string; a: string | ReactNode }[] = [
   {
     q: 'What is Valor?',
     a: 'Valor is an AI agent that lives in your Telegram group. It reads every message, evaluates its quality using AI (Gemini 2.5 Flash), and automatically sends USDC tips to contributors who provide genuine value. No commands, no voting, no humans in the loop.',
@@ -44,15 +45,15 @@ const faqs = [
   },
   {
     q: 'Can I use Valor with multiple Telegram groups?',
-    a: 'Yes. Valor supports multiple communities under a single account. Each community has its own bot, treasury wallet, and configuration. The Free plan includes 1 community, Starter includes 1, Pro includes 5, and Business includes unlimited communities.',
+    a: 'Yes. Valor supports unlimited communities under a single account. Each community has its own bot, treasury wallet, and configuration, with no limits.',
   },
   {
     q: 'What data does Valor collect?',
-    a: 'Valor collects Telegram user IDs, usernames, and message text for evaluation. Message text is sent to Gemini for scoring and is not stored after evaluation — only the score and reason are saved. We also store wallet addresses for tipping. See our full <Link href="/privacy" className="text-primary underline-offset-2 hover:underline">Privacy Policy</Link>.',
+    a: <>Valor collects Telegram user IDs, usernames, and message text for evaluation. Message text is sent to Gemini for scoring and is not stored after evaluation — only the score and reason are saved. We also store wallet addresses for tipping. See our full <Link href="/privacy" className="text-primary underline-offset-2 hover:underline">Privacy Policy</Link>.</>,
   },
   {
     q: 'How do I get started?',
-    a: '1. Sign up at <Link href="/login" className="text-primary underline-offset-2 hover:underline">valorapp.com</Link> 2. Create a bot via Telegram\'s @BotFather 3. Add the bot to your group as an admin 4. Fund the treasury wallet with USDC on Base. That\'s it — valor starts evaluating and tipping immediately.',
+    a: <>1. Sign up at <Link href="/login" className="text-primary underline-offset-2 hover:underline">valorapp.com</Link> 2. Create a bot via Telegram&apos;s @BotFather 3. Add the bot to your group as an admin 4. Fund the treasury wallet with USDC on Base. That&apos;s it — valor starts evaluating and tipping immediately.</>,
   },
   {
     q: 'What if something goes wrong?',

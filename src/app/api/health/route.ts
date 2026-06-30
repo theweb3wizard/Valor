@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverConfig } from '@/lib/config';
-import { createServiceSupabase } from '@/lib/supabase/server';
 import { refreshTreasuryBalance } from '@/lib/cdp/wallets';
+import { getDb } from '@/lib/db';
+import * as schema from '@/db/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -15,18 +17,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = createServiceSupabase();
+    const db = getDb();
+    if (!db) return NextResponse.json({ status: 'error', error: 'database not configured' }, { status: 500 });
 
-    const { error: dbError } = await supabase.from('communities').select('id', { count: 'exact', head: true });
-
-    if (dbError) {
-      return NextResponse.json({ status: 'error', error: dbError.message }, { status: 500 });
+    try {
+      await db.execute(sql`SELECT 1`);
+    } catch (dbError) {
+      return NextResponse.json({ status: 'error', error: dbError instanceof Error ? dbError.message : 'database error' }, { status: 500 });
     }
 
-    const { data: activeCommunities } = await supabase
-      .from('communities')
-      .select('id')
-      .eq('is_active', true);
+    const activeCommunities = await db
+      .select({ id: schema.communities.id })
+      .from(schema.communities)
+      .where(eq(schema.communities.isActive, true));
 
     let communitiesRefreshed = 0;
     if (activeCommunities) {
