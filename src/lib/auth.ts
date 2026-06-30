@@ -5,14 +5,18 @@ import { compare } from 'bcryptjs';
 import { getDb } from '@/lib/db';
 import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { serverConfig } from '@/lib/config';
+
+const db = serverConfig.hasDatabaseConfig ? getDb() : null;
+const adapter = db ? DrizzleAdapter(db, {
+  usersTable: schema.users,
+  accountsTable: schema.accounts,
+  sessionsTable: schema.sessions,
+  verificationTokensTable: schema.verificationTokens,
+}) : undefined;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: DrizzleAdapter(getDb()!, {
-    usersTable: schema.users,
-    accountsTable: schema.accounts,
-    sessionsTable: schema.sessions,
-    verificationTokensTable: schema.verificationTokens,
-  }),
+  adapter,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   providers: [
