@@ -151,12 +151,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const tipAmount = Number(evaluation.score >= 9 ? community.tipAmountHigh : community.tipAmountLow);
+
   const contributorWallet = await getOrCreateContributorWallet(communityId, telegramUserId, username);
   if (!contributorWallet) {
-    return NextResponse.json({ tipped: false, reason: 'CDP not configured' });
+    await db.insert(schema.tips).values({
+      communityId,
+      evaluationId: evaluationRecord.id,
+      telegramUserId,
+      username,
+      amount: String(tipAmount),
+      walletAddress: null,
+      cdpTransferId: null,
+      txHash: null,
+      transactionStatus: 'pending',
+      failureReason: 'no_wallet',
+      idempotencyKey,
+    });
+    return NextResponse.json({ tipped: false, reason: 'contributor has no wallet address' });
   }
-
-  const tipAmount = Number(evaluation.score >= 9 ? community.tipAmountHigh : community.tipAmountLow);
 
   if (!community.treasuryAddress) {
     await db.insert(schema.tips).values({

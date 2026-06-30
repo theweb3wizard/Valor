@@ -23,9 +23,7 @@ const optionalEnv = (name: string, defaultValue: string = ''): string => {
 // Server-side config (only available in server code)
 export const serverConfig = {
   geminiApiKey: optionalEnv('GEMINI_API_KEY'),
-  cdpApiKeyName: optionalEnv('CDP_API_KEY_NAME'),
-  cdpApiKeyPrivateKey: optionalEnv('CDP_API_KEY_PRIVATE_KEY'),
-  cdpNetworkId: optionalEnv('CDP_NETWORK_ID', 'base'),
+  treasuryPrivateKey: optionalEnv('TREASURY_PRIVATE_KEY'),
   qstashToken: optionalEnv('QSTASH_TOKEN'),
   qstashCurrentSigningKey: optionalEnv('QSTASH_CURRENT_SIGNING_KEY'),
   qstashNextSigningKey: optionalEnv('QSTASH_NEXT_SIGNING_KEY'),
@@ -35,7 +33,7 @@ export const serverConfig = {
   cronSecret: optionalEnv('CRON_SECRET'),
   hasDatabaseConfig: !!process.env.DATABASE_URL,
   hasGeminiConfig: !!process.env.GEMINI_API_KEY,
-  hasCdpConfig: !!process.env.CDP_API_KEY_NAME && !!process.env.CDP_API_KEY_PRIVATE_KEY,
+  hasTreasuryConfig: !!process.env.TREASURY_PRIVATE_KEY,
   hasQstashConfig: !!process.env.QSTASH_TOKEN && !!process.env.QSTASH_CURRENT_SIGNING_KEY,
   hasCronSecret: !!process.env.CRON_SECRET,
   hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,

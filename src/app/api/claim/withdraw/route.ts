@@ -36,17 +36,37 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!wallet) {
-      return NextResponse.json({ error: 'wallet not found' }, { status: 404 });
+      const [tip] = await db
+        .select({ username: schema.tips.username })
+        .from(schema.tips)
+        .where(and(
+          eq(schema.tips.communityId, communityId),
+          eq(schema.tips.telegramUserId, telegramUserId)
+        ))
+        .limit(1);
+
+      await db.insert(schema.wallets).values({
+        communityId,
+        telegramUserId,
+        username: tip?.username ?? 'unknown',
+        walletAddress: destinationAddress,
+      });
     }
 
     const result = await executeWithdrawal({
-      contributorWalletAddress: walletAddress,
+      contributorWalletAddress: destinationAddress,
       destinationAddress,
       amount,
     });
 
     if (!result.success) {
       return NextResponse.json({ error: result.error ?? 'withdrawal failed' }, { status: 500 });
+    }
+
+    if (wallet) {
+      await db.update(schema.wallets)
+        .set({ walletAddress: destinationAddress })
+        .where(eq(schema.wallets.id, wallet.id));
     }
 
     return NextResponse.json({ txHash: result.txHash });

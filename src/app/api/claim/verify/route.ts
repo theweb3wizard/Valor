@@ -14,16 +14,24 @@ export async function GET(request: NextRequest) {
     const db = getDb();
     if (!db) return NextResponse.json({ error: 'database not configured' }, { status: 500 });
 
-    const wallets = await db
-      .select({ communityId: schema.wallets.communityId, walletAddress: schema.wallets.walletAddress, username: schema.wallets.username })
-      .from(schema.wallets)
-      .where(eq(schema.wallets.telegramUserId, telegramUserId));
+    const tips = await db
+      .select({
+        communityId: schema.tips.communityId,
+        amount: schema.tips.amount,
+        transactionStatus: schema.tips.transactionStatus,
+        walletAddress: schema.tips.walletAddress,
+      })
+      .from(schema.tips)
+      .where(and(
+        eq(schema.tips.telegramUserId, telegramUserId),
+        inArray(schema.tips.transactionStatus, ['confirmed', 'pending', 'failed'])
+      ));
 
-    if (!wallets || wallets.length === 0) {
+    if (!tips || tips.length === 0) {
       return NextResponse.json({ wallets: [] });
     }
 
-    const communityIds = wallets.map((w) => w.communityId);
+    const communityIds = [...new Set(tips.map((t) => t.communityId))];
 
     const communities = await db
       .select({ id: schema.communities.id, name: schema.communities.name })
@@ -31,14 +39,6 @@ export async function GET(request: NextRequest) {
       .where(inArray(schema.communities.id, communityIds));
 
     const communityMap = new Map(communities?.map((c) => [c.id, c.name]) ?? []);
-
-    const tips = await db
-      .select({ communityId: schema.tips.communityId, amount: schema.tips.amount, transactionStatus: schema.tips.transactionStatus })
-      .from(schema.tips)
-      .where(and(
-        eq(schema.tips.telegramUserId, telegramUserId),
-        inArray(schema.tips.transactionStatus, ['confirmed', 'pending', 'failed'])
-      ));
 
     const earnedByCommunity = new Map<string, number>();
 
@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const walletInfo = wallets.map((w) => ({
-      communityId: w.communityId,
-      communityName: communityMap.get(w.communityId) ?? 'Unknown',
-      walletAddress: w.walletAddress,
-      available: earnedByCommunity.get(w.communityId) ?? 0,
+    const walletInfo = communityIds.map((communityId) => ({
+      communityId,
+      communityName: communityMap.get(communityId) ?? 'Unknown',
+      walletAddress: tips.find((t) => t.communityId === communityId && t.walletAddress)?.walletAddress ?? '',
+      available: earnedByCommunity.get(communityId) ?? 0,
     }));
 
     return NextResponse.json({ wallets: walletInfo });
