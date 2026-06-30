@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
         communityId: schema.tips.communityId,
         amount: schema.tips.amount,
         transactionStatus: schema.tips.transactionStatus,
+        failureReason: schema.tips.failureReason,
         walletAddress: schema.tips.walletAddress,
       })
       .from(schema.tips)
@@ -27,11 +28,11 @@ export async function GET(request: NextRequest) {
         inArray(schema.tips.transactionStatus, ['confirmed', 'pending', 'failed'])
       ));
 
-    if (!tips || tips.length === 0) {
+    const communityIds = [...new Set((tips ?? []).map((t) => t.communityId))];
+
+    if (communityIds.length === 0) {
       return NextResponse.json({ wallets: [] });
     }
-
-    const communityIds = [...new Set(tips.map((t) => t.communityId))];
 
     const communities = await db
       .select({ id: schema.communities.id, name: schema.communities.name })
@@ -40,23 +41,36 @@ export async function GET(request: NextRequest) {
 
     const communityMap = new Map(communities?.map((c) => [c.id, c.name]) ?? []);
 
-    const earnedByCommunity = new Map<string, number>();
+    const userWallets = await db
+      .select({
+        communityId: schema.wallets.communityId,
+        walletAddress: schema.wallets.walletAddress,
+      })
+      .from(schema.wallets)
+      .where(and(
+        eq(schema.wallets.telegramUserId, telegramUserId),
+        inArray(schema.wallets.communityId, communityIds)
+      ));
 
-    for (const tip of tips ?? []) {
-      if (tip.transactionStatus === 'confirmed') {
-        earnedByCommunity.set(
-          tip.communityId,
-          (earnedByCommunity.get(tip.communityId) ?? 0) + Number(tip.amount)
-        );
-      }
-    }
+    const walletMap = new Map(userWallets?.map((w) => [w.communityId, w.walletAddress]) ?? []);
 
-    const walletInfo = communityIds.map((communityId) => ({
-      communityId,
-      communityName: communityMap.get(communityId) ?? 'Unknown',
-      walletAddress: tips.find((t) => t.communityId === communityId && t.walletAddress)?.walletAddress ?? '',
-      available: earnedByCommunity.get(communityId) ?? 0,
-    }));
+    const walletInfo = communityIds.map((communityId) => {
+      const communityTips = (tips ?? []).filter((t) => t.communityId === communityId);
+      const available = communityTips
+        .filter((t) => t.transactionStatus === 'confirmed')
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      const pending = communityTips
+        .filter((t) => t.transactionStatus === 'pending' && t.failureReason === 'no_wallet')
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      return {
+        communityId,
+        communityName: communityMap.get(communityId) ?? 'Unknown',
+        walletAddress: walletMap.get(communityId) ?? '',
+        available,
+        pending,
+      };
+    });
 
     return NextResponse.json({ wallets: walletInfo });
   } catch (err) {

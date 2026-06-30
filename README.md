@@ -26,9 +26,11 @@ This project was built as a full-stack architecture showcase. It demonstrates a 
 - Async job queue (Upstash QStash)
 - Dashboard with activity feed (15-second polling)
 - Onboarding wizard (4-step community setup)
-- Claim portal for contributors
+- Claim portal for contributors — wallet registration, pending tip retry, withdrawal
+- Gas sponsorship — master key auto-funds each community treasury with ETH for gas
+- Pending tip retry — registering a wallet automatically delivers previously stuck tips
 - Database: 11 tables via Drizzle ORM on Neon Postgres
-- Build: zero TypeScript errors, 22 routes compiled
+- Build: zero TypeScript errors, 23 routes compiled
 
 ### What's Scoped Out (For Production)
 
@@ -80,6 +82,7 @@ src/
 │   ├── api/                        # Route handlers
 │   │   ├── auth/[...nextauth]/
 │   │   ├── auth/register/
+│   │   ├── claim/register/         # Wallet registration + pending tip retry
 │   │   ├── claim/verify, withdraw/
 │   │   ├── community/, [id]/, verify-bot/
 │   │   ├── community/[id]/feed/    # Activity feed polling endpoint
@@ -163,7 +166,6 @@ npm run build
 ## Future Plans
 
 - **End-to-end testing** — Vitest + MSW for API routes, Playwright for dashboard
-- **Enhanced contributor flow** — On-chain wallet registration before tip delivery
 - **Multi-chain support** — Abstract chain config to support Base, Polygon, OP
 - **Admin analytics** — Per-community dashboards with tip trends, top contributors
 - **Telegram mini-app** — In-chat withdrawal flow via Telegram WebApp

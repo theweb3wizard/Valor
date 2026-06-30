@@ -12,6 +12,7 @@ interface WalletInfo {
   communityName: string;
   walletAddress: string;
   available: number;
+  pending: number;
 }
 
 function ClaimForm() {
@@ -37,6 +38,48 @@ function ClaimForm() {
   }, [userId]);
 
   const totalAvailable = wallets.reduce((s, w) => s + w.available, 0);
+  const totalPending = wallets.reduce((s, w) => s + w.pending, 0);
+
+  async function handleRegister(wallet: WalletInfo) {
+    const address = addresses[wallet.communityId]?.trim();
+
+    if (!address || !isAddress(address)) {
+      toast.error('Invalid EVM wallet address');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/claim/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          communityId: wallet.communityId,
+          telegramUserId: userId,
+          walletAddress: address,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success(data.tipsSucceeded > 0
+          ? `Wallet registered! ${data.tipsSucceeded} pending tip(s) delivered.`
+          : 'Wallet registered!');
+        setAddresses((prev) => ({ ...prev, [wallet.communityId]: '' }));
+        setWallets((prev) =>
+          prev.map((w) =>
+            w.communityId === wallet.communityId
+              ? { ...w, walletAddress: address, available: w.available + w.pending, pending: 0 }
+              : w
+          )
+        );
+      } else {
+        toast.error(data.error || 'Registration failed');
+      }
+    } catch {
+      toast.error('Network error');
+    }
+  }
 
   async function handleWithdraw(wallet: WalletInfo) {
     const address = addresses[wallet.communityId]?.trim();
@@ -113,17 +156,48 @@ function ClaimForm() {
 
           {wallets.length > 0 && (
             <>
-              <div className="rounded-lg border border-border bg-muted p-4 text-center">
+              <div className="rounded-lg border border-border bg-muted p-4 text-center space-y-1">
                 <p className="text-sm text-muted-foreground">Total available to withdraw</p>
                 <p className="text-3xl font-bold">{totalAvailable.toFixed(2)} USDC</p>
+                {totalPending > 0 && (
+                  <p className="text-sm text-amber-500 font-medium">
+                    +{totalPending.toFixed(2)} USDC pending — register your wallet to receive
+                  </p>
+                )}
               </div>
 
               {wallets.map((wallet) => (
                 <div key={wallet.communityId} className="rounded-lg border border-border bg-card p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="font-medium">{wallet.communityName}</p>
-                    <p className="text-sm font-semibold">{wallet.available.toFixed(2)} USDC</p>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{wallet.available.toFixed(2)} USDC</p>
+                      {wallet.pending > 0 && (
+                        <p className="text-xs text-amber-500">{wallet.pending.toFixed(2)} pending</p>
+                      )}
+                    </div>
                   </div>
+
+                  {wallet.pending > 0 && !wallet.walletAddress && (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Your EVM wallet address (0x...)"
+                        value={addresses[wallet.communityId] ?? ''}
+                        onChange={(e) =>
+                          setAddresses((prev) => ({ ...prev, [wallet.communityId]: e.target.value }))
+                        }
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                      />
+                      <Button
+                        onClick={() => handleRegister(wallet)}
+                        className="w-full"
+                        variant="default"
+                      >
+                        Register wallet & receive pending tips
+                      </Button>
+                    </div>
+                  )}
 
                   {wallet.available > 0 && (
                     <>
@@ -159,9 +233,11 @@ function ClaimForm() {
                     </>
                   )}
 
-                  <p className="text-xs text-muted-foreground break-all font-mono">
-                    Wallet: {wallet.walletAddress.slice(0, 10)}...
-                  </p>
+                  {wallet.walletAddress && (
+                    <p className="text-xs text-muted-foreground break-all font-mono">
+                      Wallet: {wallet.walletAddress.slice(0, 10)}...
+                    </p>
+                  )}
                 </div>
               ))}
             </>

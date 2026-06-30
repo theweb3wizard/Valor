@@ -1,4 +1,4 @@
-import { createWalletClient, createPublicClient, http, keccak256, encodePacked } from 'viem';
+import { createWalletClient, createPublicClient, http, keccak256, encodePacked, parseEther } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import { serverConfig } from '@/lib/config';
@@ -14,6 +14,16 @@ export const USDC_DECIMALS = 6;
 export function getMasterAccount() {
   if (!serverConfig.treasuryPrivateKey) return null;
   return privateKeyToAccount(serverConfig.treasuryPrivateKey as `0x${string}`);
+}
+
+export function getMasterWalletClient() {
+  const account = getMasterAccount();
+  if (!account) return null;
+  return createWalletClient({
+    account,
+    chain: base,
+    transport: http(),
+  });
 }
 
 export function deriveCommunityAccount(communityId: string) {

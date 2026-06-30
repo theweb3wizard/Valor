@@ -54,6 +54,42 @@ Telegram Group Message
 └──────────────────────────────────────────┘
 ```
 
+### Claim Portal Flow (Registration → Retry → Withdrawal)
+
+```
+Contributor visits /claim?user=<telegramUserId>
+          │
+          ▼
+┌──────────────────────────────────────────┐
+│  GET /api/claim/verify                   │
+│  Returns per-community:                  │
+│    - walletAddress (from wallets table)  │
+│    - available (confirmed tips sum)      │
+│    - pending (pending/no_wallet sum)     │
+└──────────────────────────────────────────┘
+          │
+          ├── wallet not registered + pending tips exist →
+          │   ┌──────────────────────────────────────────┐
+          │   │  POST /api/claim/register                │
+          │   │  1. Save walletAddress to wallets table   │
+          │   │  2. retryPendingTips():                   │
+          │   │     - Find pending/no_wallet tips         │
+          │   │     - Check treasury USDC balance         │
+          │   │     - Execute USDC transfers              │
+          │   │     - Mark tips confirmed/failed          │
+          │   │  3. Refresh treasury balance              │
+          │   └──────────────────────────────────────────┘
+          │
+          └── wallet registered + confirmed tips exist →
+              ┌──────────────────────────────────────────┐
+              │  POST /api/claim/withdraw                 │
+              │  1. Save/update walletAddress             │
+              │  2. retryPendingTips() (same retry logic) │
+              │  3. Execute USDC transfer to destination  │
+              │  4. Update tip/wallet records             │
+              └──────────────────────────────────────────┘
+```
+
 **Key insight:** The webhook returns 200 in under 50ms. The heavy work (AI evaluation, blockchain transfer) happens asynchronously with no timeout constraint. This is what makes the architecture work on Vercel serverless while respecting Telegram's 10-second webhook timeout.
 
 ---
@@ -76,6 +112,7 @@ src/app/
 ├── api/                       # Route Handlers — no UI, bare JSON responses
 │   ├── auth/[...nextauth]/    # Auth.js handler (GET + POST)
 │   ├── auth/register/         # Registration with bcrypt
+│   ├── claim/register/          # Wallet registration + pending tip retry
 │   ├── claim/verify, withdraw/
 │   ├── community/, [id]/, verify-bot/
 │   ├── community/[id]/feed/   # Polling endpoint for activity feed
@@ -112,7 +149,7 @@ RootLayout (dark theme, Toaster)
 │   └── Card (email form / magic link sent)
 ├── ClaimPage (/claim)
 │   └── ClaimForm (Suspense-wrapped)
-│       └── Card (wallet list, withdrawal forms)
+│       └── Card (wallet list, pending + available totals, register + withdraw forms)
 ├── OnboardPage (/onboard)
 │   ├── StepIndicator
 │   ├── StepNameCommunity
@@ -158,6 +195,9 @@ Transient UI state (form inputs, step progress, loading flags) lives in individu
 
 ### Live Feed State — Polling (15-second interval)
 The activity feed uses **15-second polling** via `setInterval` to a dedicated API endpoint (`/api/community/[id]/feed?since=<timestamp>`). Initial data is server-rendered (SSR). New evaluations and tips are fetched as JSON and prepended to the feed. No WebSocket or Realtime infrastructure needed.
+
+### Pending Tip Retry State — DB-Driven Recovery
+When a tip fails because the user has no registered wallet, it's written as `transactionStatus: 'pending'` with `failureReason: 'no_wallet'`. No in-memory queue, no retry scheduler — the state lives in the database. When the user later registers their wallet (via `/api/claim/register` or during a withdrawal), `retryPendingTips()` queries for all such tips and processes them. This means the retry is idempotent, survives server restarts, and requires zero infrastructure.
 
 **Why no global store:** The app has no shared client-side state that spans multiple pages. Dashboard state is scoped to the community page. Onboarding state is scoped to the wizard. Claim state is scoped to the claim page. Adding a global store would increase bundle size and complexity with zero benefit.
 
@@ -241,6 +281,8 @@ Callers check for `null` before using the client. If a service is unavailable, t
 - A single master private key is stored in env vars (never in the DB)
 - Per-community wallets are derived deterministically via `keccak256(masterKey + communityId)` — no per-community keys stored
 - The master key only needs a small ETH balance for gas (~$0.10 on Base funds thousands of txns)
+- **Gas sponsorship:** When a community treasury is created, 0.0005 ETH is automatically sent from the master key to the community's derived address — community owners don't need to worry about gas, only USDC
+- **Pending tip retry:** Tips that fail due to missing wallet are stored as `pending` with `failureReason: 'no_wallet'`. When a user registers their wallet (via the claim portal or withdrawal), `retryPendingTips()` re-processes all pending tips — checking balance, executing transfers, and marking them confirmed
 - Idempotency keys prevent duplicate tips from webhook retries or QStash redeliveries
 - This is a portfolio project — not intended for production with real funds
 
@@ -250,6 +292,16 @@ Rate limiting has four independent layers:
 2. **Daily tip limit** — configurable max tips per user per day (default: 3)
 3. **Cooldown** — 30-minute minimum between tips to the same user
 4. **Treasury balance check** — tips are only fired if the treasury has sufficient USDC + buffer
+
+### Pending Tip Recovery
+If a tip passes all abuse checks but the user doesn't have a wallet registered, the tip is stored as `pending` with `failureReason: 'no_wallet'`. This is not a failure — it's deferred delivery. When the user registers a wallet on the claim portal:
+1. Wallet address is saved to the `wallets` table
+2. `retryPendingTips()` finds all matching pending tips
+3. Treasury balance is re-checked (it may have changed since the tip was evaluated)
+4. If sufficient, USDC is transferred and tip is marked `confirmed`
+5. If insufficient, tip is marked `failed` with `failureReason: 'insufficient_treasury'`
+
+This means contributors never lose earned tips — they just need to show up with a wallet address to collect them.
 
 ---
 
@@ -262,7 +314,7 @@ Rate limiting has four independent layers:
 - `communities` — Per-community configuration (thresholds, tokens, treasury, scoring params)
 - `wallets` — Contributor wallet address mappings (community + telegram_user → their address)
 - `evaluations` — AI evaluation results (score, reason, should_tip)
-- `tips` — Tip records with idempotency keys (prevents duplicates)
+- `tips` — Tip records with idempotency keys (prevents duplicates). Statuses: `pending` (deferred — no wallet or retry pending), `confirmed` (delivered on-chain), `failed` (insufficient balance or other error)
 - `rate_limits` — Daily tip counting with atomic upsert
 
 ### Auth.js Adapter Tables
@@ -300,7 +352,7 @@ Instead of using an MPC wallet provider (like Coinbase CDP), Valor uses **determ
 
 3. **Community owner funds** the derived `communityAddress` with USDC (not the master address).
 4. **When tipping**, the app re-derives the key, creates a viem wallet client, and signs a USDC `transfer()` transaction.
-5. **Gas** is paid from the derived key's ETH balance — the master key needs a tiny amount of ETH on Base to cover gas for all communities.
+5. **Gas** is paid from the derived key's ETH balance. On treasury creation, `createCommunityTreasury()` automatically sends 0.0005 ETH from the master key to the derived key — this covers ~300+ transactions per community. Community owners only need to fund USDC.
 
 ### Why This Approach
 
