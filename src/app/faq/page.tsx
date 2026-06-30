@@ -53,7 +53,7 @@ const faqs: { q: string; a: string | ReactNode }[] = [
   },
   {
     q: 'How do I get started?',
-    a: <>1. Sign up at <Link href="/login" className="text-primary underline-offset-2 hover:underline">valorapp.com</Link> 2. Create a bot via Telegram&apos;s @BotFather 3. Add the bot to your group as an admin 4. Fund the treasury wallet with USDC on Base. That&apos;s it — valor starts evaluating and tipping immediately.</>,
+    a: <>1. Sign up at <Link href="/login" className="text-primary underline-offset-2 hover:underline">valor-tgbot.vercel.app</Link> 2. Create a bot via Telegram&apos;s @BotFather 3. Add the bot to your group as an admin 4. Fund the treasury wallet with USDC on Base. That&apos;s it — valor starts evaluating and tipping immediately.</>,
   },
   {
     q: 'What if something goes wrong?',
