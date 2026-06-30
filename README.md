@@ -25,7 +25,7 @@ This project was built as a full-stack architecture showcase. It demonstrates a 
 - AI evaluation pipeline (Gemini via Vercel AI SDK)
 - Async job queue (Upstash QStash)
 - Dashboard with activity feed (15-second polling)
-- Onboarding wizard (4-step community setup)
+- Onboarding wizard (4 step community setup)
 - Claim portal for contributors — wallet registration, pending tip retry, withdrawal
 - Gas sponsorship — master key auto-funds each community treasury with ETH for gas
 - Pending tip retry — registering a wallet automatically delivers previously stuck tips
