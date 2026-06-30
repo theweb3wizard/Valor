@@ -1,6 +1,6 @@
 import { parseUnits, erc20Abi } from 'viem';
 import { base } from 'viem/chains';
-import { getTreasuryAccount, getTreasuryWalletClient, publicClient, USDC_CONTRACT_ADDRESS } from './client';
+import { getCommunityWalletClient, deriveCommunityAccount, publicClient, USDC_CONTRACT_ADDRESS } from './client';
 
 export async function getUsdcBalance(address: string): Promise<bigint> {
   try {
@@ -16,35 +16,31 @@ export async function getUsdcBalance(address: string): Promise<bigint> {
   }
 }
 
-export interface TransferUsdcParams {
-  to: string;
-  amount: number;
-}
-
-export async function transferUsdc(params: TransferUsdcParams): Promise<{
-  success: boolean;
-  txHash: string | null;
-  error?: string;
-}> {
+export async function transferUsdcFromCommunity(
+  communityId: string,
+  to: string,
+  amount: number
+): Promise<{ success: boolean; txHash: string | null; error?: string }> {
   try {
-    const walletClient = getTreasuryWalletClient();
+    const account = deriveCommunityAccount(communityId);
+    if (!account) {
+      return { success: false, txHash: null, error: 'treasury not configured' };
+    }
+
+    const walletClient = getCommunityWalletClient(communityId);
     if (!walletClient) {
       return { success: false, txHash: null, error: 'treasury not configured' };
     }
 
-    const amountAtomic = parseUnits(params.amount.toString(), 6);
+    const amountAtomic = parseUnits(amount.toString(), 6);
 
-    const account = getTreasuryAccount();
-    if (!account) {
-      return { success: false, txHash: null, error: 'treasury not configured' };
-    }
     const txHash = await walletClient.writeContract({
       chain: base,
       account,
       address: USDC_CONTRACT_ADDRESS,
       abi: erc20Abi,
       functionName: 'transfer',
-      args: [params.to as `0x${string}`, amountAtomic],
+      args: [to as `0x${string}`, amountAtomic],
     });
 
     return { success: true, txHash };

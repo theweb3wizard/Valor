@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await executeWithdrawal({
+      communityId,
       contributorWalletAddress: destinationAddress,
       destinationAddress,
       amount,

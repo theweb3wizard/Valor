@@ -1,4 +1,4 @@
-import { getTreasuryAccount, USDC_CONTRACT_ADDRESS } from '@/lib/chain/client';
+import { deriveCommunityAccount, USDC_CONTRACT_ADDRESS } from '@/lib/chain/client';
 import { getUsdcBalance } from '@/lib/chain/usdc';
 import { getDb } from '@/lib/db';
 import * as schema from '@/db/schema';
@@ -8,7 +8,7 @@ export async function createCommunityTreasury(communityId: string): Promise<{
   walletId: string;
   address: string;
 } | null> {
-  const account = getTreasuryAccount();
+  const account = deriveCommunityAccount(communityId);
   if (!account) return null;
 
   const db = getDb();

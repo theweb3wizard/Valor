@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
   }
 
   const transferResult = await executeTip({
+    communityId,
     treasuryWalletAddress: community.treasuryAddress,
     contributorWalletAddress: contributorWallet.walletAddress,
     amount: tipAmount,
