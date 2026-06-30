@@ -10,7 +10,7 @@ Valor is a serverless autonomous agent built on five primitives:
 
 1. **Telegram Webhook** — event source. Every group message triggers the pipeline.
 2. **Gemini + Vercel AI SDK** — reasoning layer. Evaluates message quality, returns structured decisions.
-3. **Coinbase CDP** — financial execution layer. Creates MPC wallets, transfers USDC.
+3. **viem + Base** — financial execution layer. Deterministic per-community key derivation, USDC ERC-20 transfers.
 4. **Upstash QStash** — async queue. Decouples the webhook from the tip pipeline.
 5. **Neon + Drizzle** — state layer. Serverless Postgres via Neon, type-safe queries via Drizzle ORM.
 
@@ -45,9 +45,9 @@ Telegram Group Message
 │   3. Idempotency key check               │
 │   4. Gemini evaluation (structured out)  │
 │   5. Rate limit check (3 DB reads)       │
-│   6. Wallet resolution (CDP)             │
-│   7. Treasury balance check (CDP)        │
-│   8. USDC transfer (CDP, Base chain)     │
+│   6. Wallet resolution (wallets table)   │
+│   7. Treasury balance check (viem read)  │
+│   8. USDC transfer (viem, Base chain)    │
 │   9. Database writes (Drizzle)           │
 │  11. Telegram notification (async)       │
 │  12. Treasury balance refresh            │
@@ -146,7 +146,7 @@ All persistent state lives in Postgres on Neon. The application uses **Drizzle O
 - Community configuration (thresholds, tokens, balances)
 - Evaluation records (scores, reasons, timestamps)
 - Tip records (amounts, statuses, tx hashes)
-- Wallet mappings (telegram_user_id → CDP wallet)
+- Wallet mappings (telegram_user_id → contributor's wallet address)
 - Rate limits (daily tip counts, cooldowns)
 - Auth sessions, accounts, and verification tokens (via Auth.js Drizzle adapter)
 
@@ -171,7 +171,7 @@ Environment variables are validated at import time through two typed config modu
 Validates server-side variables (API keys, secrets). Uses `warnEnv()` for critical variables (logs a warning if missing — evaluates to blank string) and `optionalEnv()` for features that can degrade gracefully. Also checks for **placeholder values** (`"v"`, `"your-"`, `"changeme"`, etc.) and treats them as unconfigured. Exports `serverConfig` with computed booleans:
 - `hasDatabaseConfig` — gates all database operations
 - `hasGeminiConfig` — gates AI evaluation
-- `hasCdpConfig` — gates wallet operations
+- `hasTreasuryConfig` — gates on-chain operations
 - `hasQstashConfig` — gates async job queue
 - `hasCronSecret` — gates webhook secret verification
 
@@ -179,7 +179,7 @@ Validates server-side variables (API keys, secrets). Uses `warnEnv()` for critic
 Exposes only `NEXT_PUBLIC_*` variables. Same pattern — `warnEnv()` for critical vars, `optionalEnv()` for optional ones.
 
 ### Graceful Degradation Pattern
-Every service client (Neon/Drizzle, CDP, QStash, Gemini) follows the same pattern:
+Every service client (Neon/Drizzle, viem, QStash, Gemini) follows the same pattern:
 
 ```typescript
 function getXxxClient(): XxxClient | null {
@@ -210,7 +210,7 @@ Callers check for `null` before using the client. If a service is unavailable, t
 - All async operations have explicit try/catch with structured error logging
 - Log format: `JSON.stringify({ step, error, ...context })` for grep-ability
 - API routes return JSON error responses, never throw to the global handler
-- External API calls (CDP, Gemini, Telegram) never throw — they return error objects
+- External API calls (viem, Gemini, Telegram) never throw — they return error objects
 
 ---
 
@@ -238,10 +238,11 @@ Callers check for `null` before using the client. If a service is unavailable, t
 - QStash job processor verifies the `upstash-signature` header using the SDK's receiver utility
 
 ### Blockchain Security
-- No private keys or seed phrases stored in the database
-- CDP handles key sharding with MPC — the application never touches raw keys
-- Wallet addresses are the only on-chain data stored in PostgreSQL
+- A single master private key is stored in env vars (never in the DB)
+- Per-community wallets are derived deterministically via `keccak256(masterKey + communityId)` — no per-community keys stored
+- The master key only needs a small ETH balance for gas (~$0.10 on Base funds thousands of txns)
 - Idempotency keys prevent duplicate tips from webhook retries or QStash redeliveries
+- This is a portfolio project — not intended for production with real funds
 
 ### Abuse Prevention
 Rate limiting has four independent layers:
@@ -259,7 +260,7 @@ Rate limiting has four independent layers:
 - `users` — Application users with email, name, bcrypt password hash
 - `subscriptions` — Subscription tracking (legacy, unused — app is free)
 - `communities` — Per-community configuration (thresholds, tokens, treasury, scoring params)
-- `wallets` — CDP wallet mappings (community + telegram_user → CDP wallet)
+- `wallets` — Contributor wallet address mappings (community + telegram_user → their address)
 - `evaluations` — AI evaluation results (score, reason, should_tip)
 - `tips` — Tip records with idempotency keys (prevents duplicates)
 - `rate_limits` — Daily tip counting with atomic upsert
@@ -280,3 +281,30 @@ All queries use Drizzle's type-safe query builder — no raw SQL except for the 
 - `db.insert(schema.tips).values({...}).returning()`
 - Numeric columns from `pg` return as `string` — use `Number()` where arithmetic is needed
 - Timestamp columns return `Date | null` — use `.toISOString()` for serialization
+
+---
+
+## Per-Community Treasury Wallet Derivation
+
+Instead of using an MPC wallet provider (like Coinbase CDP), Valor uses **deterministic key derivation** from a single master private key:
+
+### How It Works
+
+1. **Master key** (`TREASURY_PRIVATE_KEY` env var) — a random 32-byte hex string. This is the only secret you manage.
+2. **Community derivation** — for each community, an account is derived as:
+
+   ```
+   communityKey = keccak256(abi.encodePacked(masterKey, communityId))
+   communityAddress = privateKeyToAccount(communityKey).address
+   ```
+
+3. **Community owner funds** the derived `communityAddress` with USDC (not the master address).
+4. **When tipping**, the app re-derives the key, creates a viem wallet client, and signs a USDC `transfer()` transaction.
+5. **Gas** is paid from the derived key's ETH balance — the master key needs a tiny amount of ETH on Base to cover gas for all communities.
+
+### Why This Approach
+
+- **No third-party dependency** — no CDP SDK, no API keys, no MPC infrastructure
+- **No private keys in the database** — keys are derived on-the-fly from the master secret + community ID
+- **Deterministic** — the same community always gets the same address, even across app restarts
+- **Portfolio-safe** — you can run the entire app without funding any wallet. The chain code compiles and the architecture is visible, but transfers only execute when a funded key is configured.

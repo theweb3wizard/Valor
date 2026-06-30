@@ -7,7 +7,6 @@
 - **Neon Postgres project** (free tier) — sign up at [neon.tech](https://neon.tech)
 - **Telegram bot token** — create via [@BotFather](https://t.me/botfather)
 - **Gemini API key** — get from [aistudio.google.com](https://aistudio.google.com)
-- **Coinbase CDP API key** — generate at [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com)
 - **Upstash QStash** — create at [upstash.com](https://upstash.com)
 
 ---
@@ -39,11 +38,9 @@ NEXT_PUBLIC_APP_URL=http://localhost:9002
 GEMINI_API_KEY=your-gemini-api-key
 ```
 
-Required for tipping (wallet transfers):
+Optional (on-chain tipping — portfolio mode, not needed for dev):
 ```env
-CDP_API_KEY_NAME=your-cdp-api-key-name
-CDP_API_KEY_PRIVATE_KEY=your-cdp-private-key
-CDP_NETWORK_ID=base-sepolia
+TREASURY_PRIVATE_KEY=0xyour-master-private-key
 ```
 
 Required for async processing:
@@ -146,7 +143,7 @@ No relative imports that go up more than one level — use `@/` aliases.
 ### Async Code
 - Every `async` function has explicit error handling — never let a promise reject unhandled.
 - API routes wrap bodies in try/catch and return structured JSON errors.
-- External API calls (CDP, Gemini, Telegram) never throw — they return error objects.
+- External API calls (viem, Gemini, Telegram) never throw — they return error objects.
 - Log format for errors: `JSON.stringify({ step, error, ...context })` — grep-able.
 
 ### React Patterns
