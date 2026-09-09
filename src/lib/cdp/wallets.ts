@@ -1,9 +1,9 @@
 import { parseEther } from 'viem';
-import { deriveCommunityAccount, getMasterWalletClient, USDC_CONTRACT_ADDRESS } from '@/lib/chain/client';
+import { deriveCommunityAccount, getMasterWalletClient } from '@/lib/chain/client';
 import { getUsdcBalance, transferUsdcFromCommunity } from '@/lib/chain/usdc';
 import { getDb } from '@/lib/db';
 import * as schema from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 const GAS_SPONSORSHIP_AMOUNT = '0.0005';
 
@@ -61,7 +61,7 @@ export async function createCommunityTreasury(communityId: string): Promise<{
 export async function getOrCreateContributorWallet(
   communityId: string,
   telegramUserId: string,
-  username: string
+  _username: string
 ): Promise<{
   cdpWalletId: string;
   walletAddress: string;
@@ -203,10 +203,10 @@ export async function refreshTreasuryBalance(communityId: string): Promise<void>
   if (!community?.treasuryAddress) return;
 
   const balance = await getUsdcBalance(community.treasuryAddress);
-  const divisor = 10n ** 6n;
-  const usdcAmount = Number(balance / divisor);
+  // Preserve cents: format with 2 decimals without truncating
+  const usdcAmount = (Number(balance) / 1_000_000).toFixed(2);
 
   await db.update(schema.communities)
-    .set({ usdcBalance: String(usdcAmount) })
+    .set({ usdcBalance: usdcAmount })
     .where(eq(schema.communities.id, communityId));
 }

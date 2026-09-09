@@ -4,18 +4,29 @@ import * as schema from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { isAddress } from 'viem';
 import { retryPendingTips } from '@/lib/cdp/wallets';
+import { verifyClaimSignature } from '@/lib/claim-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rl = checkRateLimit(`claim-register:${ip}`, 20, 60_000);
+    if (!rl.allowed) return NextResponse.json({ error: 'rate limited' }, { status: 429 });
+
     const body = await request.json();
-    const { communityId, telegramUserId, walletAddress } = body as {
+    const { communityId, telegramUserId, walletAddress, sig } = body as {
       communityId: string;
       telegramUserId: string;
       walletAddress: string;
+      sig?: string;
     };
 
     if (!communityId || !telegramUserId || !walletAddress) {
       return NextResponse.json({ error: 'missing required fields' }, { status: 400 });
+    }
+
+    if (!verifyClaimSignature(telegramUserId, sig ?? null)) {
+      return NextResponse.json({ error: 'invalid or missing signature' }, { status: 401 });
     }
 
     if (!isAddress(walletAddress)) {

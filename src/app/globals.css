@@ -1,35 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @theme inline {
-  --color-background: oklch(0.06 0 0);
-  --color-foreground: oklch(0.96 0 0);
-  --color-card: oklch(0.10 0 0);
-  --color-card-foreground: oklch(0.96 0 0);
-  --color-popover: oklch(0.10 0 0);
-  --color-popover-foreground: oklch(0.96 0 0);
-  --color-primary: oklch(0.75 0.18 75);
-  --color-primary-foreground: oklch(0.06 0 0);
-  --color-secondary: oklch(0.15 0 0);
-  --color-secondary-foreground: oklch(0.96 0 0);
+  --color-background: oklch(0.05 0 0);
+  --color-foreground: oklch(0.97 0 0);
+  --color-card: oklch(0.11 0 0);
+  --color-card-foreground: oklch(0.97 0 0);
+  --color-popover: oklch(0.12 0 0);
+  --color-popover-foreground: oklch(0.97 0 0);
+  --color-primary: oklch(0.78 0.16 70);
+  --color-primary-foreground: oklch(0.08 0 0);
+  --color-secondary: oklch(0.16 0 0);
+  --color-secondary-foreground: oklch(0.97 0 0);
   --color-muted: oklch(0.15 0 0);
-  --color-muted-foreground: oklch(0.60 0 0);
-  --color-accent: oklch(0.20 0 0);
-  --color-accent-foreground: oklch(0.96 0 0);
-  --color-destructive: oklch(0.60 0.20 25);
-  --color-destructive-foreground: oklch(0.96 0 0);
+  --color-muted-foreground: oklch(0.62 0 0);
+  --color-accent: oklch(0.22 0 0);
+  --color-accent-foreground: oklch(0.97 0 0);
+  --color-destructive: oklch(0.58 0.22 25);
+  --color-destructive-foreground: oklch(0.97 0 0);
   --color-border: oklch(0.20 0 0);
-  --color-input: oklch(0.20 0 0);
-  --color-ring: oklch(0.75 0.18 75);
-  --color-success: oklch(0.65 0.15 150);
-  --radius: 0.75rem;
+  --color-input: oklch(0.22 0 0);
+  --color-ring: oklch(0.78 0.16 70);
+  --color-success: oklch(0.68 0.14 155);
+  --color-warning: oklch(0.75 0.14 75);
+  --radius: 0.9rem;
+  --font-display: 'Instrument Serif', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+    font-feature-settings: 'ss01' 1, 'cv11' 1;
+    text-rendering: optimizeLegibility;
   }
+  h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.02em; }
 }
+
+/* Utility: grain overlay */
+.grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* Mesh glow */
+.mesh-glow {
+  background:
+    radial-gradient(600px circle at 20% 20%, oklch(0.78 0.16 70 / 0.12), transparent 60%),
+    radial-gradient(800px circle at 80% 0%, oklch(0.65 0.12 240 / 0.08), transparent 60%),
+    radial-gradient(700px circle at 50% 100%, oklch(0.68 0.14 155 / 0.06), transparent 60%);
+}
+
+/* Glass card */
+.glass {
+  background: oklch(0.12 0 0 / 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid oklch(1 0 0 / 0.08);
+}
+
+/* Animated grid */
+.grid-pattern {
+  background-image:
+    linear-gradient(oklch(1 0 0 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(1 0 0 / 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Shimmer border */
+.shimmer-border {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(90deg, transparent, oklch(0.78 0.16 70 / 0.4), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 3s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes float { 0%,100% { transform: translateY(0px) } 50% { transform: translateY(-6px) } }
+@keyframes pulse-glow { 0%,100% { box-shadow: 0 0 20px oklch(0.78 0.16 70 / 0.3) } 50% { box-shadow: 0 0 40px oklch(0.78 0.16 70 / 0.5) } }
+@keyframes marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }

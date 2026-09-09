@@ -1,11 +1,15 @@
-import { createWalletClient, createPublicClient, http, keccak256, encodePacked, parseEther } from 'viem';
+import { createWalletClient, createPublicClient, http, keccak256, encodePacked } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import { serverConfig } from '@/lib/config';
 
+function getRpcTransport() {
+  return serverConfig.rpcUrl ? http(serverConfig.rpcUrl) : http();
+}
+
 export const publicClient = createPublicClient({
   chain: base,
-  transport: http(),
+  transport: getRpcTransport(),
 });
 
 export const USDC_CONTRACT_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -22,7 +26,7 @@ export function getMasterWalletClient() {
   return createWalletClient({
     account,
     chain: base,
-    transport: http(),
+    transport: getRpcTransport(),
   });
 }
 
@@ -46,6 +50,6 @@ export function getCommunityWalletClient(communityId: string) {
   return createWalletClient({
     account,
     chain: base,
-    transport: http(),
+    transport: getRpcTransport(),
   });
 }

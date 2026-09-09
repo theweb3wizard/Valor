@@ -19,17 +19,29 @@ type FeedItem = {
   timestamp: string;
 };
 
+function toIso(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value as string);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+function toTime(value: string | Date | null | undefined): number {
+  if (!value) return 0;
+  const d = value instanceof Date ? value : new Date(value as string);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
 export function ActivityFeed({ communityId, initialEvaluations, initialTips }: Props) {
   const [items, setItems] = useState<FeedItem[]>(() => {
     const evals: FeedItem[] = (initialEvaluations ?? []).map((e) => ({
       type: 'evaluation' as const,
       data: e,
-      timestamp: e.evaluatedAt?.toISOString() ?? '',
+      timestamp: toIso(e.evaluatedAt),
     }));
     const tips: FeedItem[] = (initialTips ?? []).map((t) => ({
       type: 'tip' as const,
       data: t,
-      timestamp: t.tippedAt?.toISOString() ?? '',
+      timestamp: toIso(t.tippedAt),
     }));
     return [...evals, ...tips].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -39,8 +51,8 @@ export function ActivityFeed({ communityId, initialEvaluations, initialTips }: P
   const latestTimestampRef = useRef<string>((() => {
     const all = [...(initialEvaluations ?? []), ...(initialTips ?? [])] as (Evaluation | Tip)[];
     const dates = all.map((item) => {
-      if ('evaluatedAt' in item && item.evaluatedAt) return item.evaluatedAt.getTime();
-      if ('tippedAt' in item && item.tippedAt) return item.tippedAt.getTime();
+      if ('evaluatedAt' in item && item.evaluatedAt) return toTime(item.evaluatedAt);
+      if ('tippedAt' in item && item.tippedAt) return toTime(item.tippedAt);
       return 0;
     });
     const max = Math.max(...dates, 0);
@@ -56,14 +68,14 @@ export function ActivityFeed({ communityId, initialEvaluations, initialTips }: P
         if (!data) return;
         const newItems: FeedItem[] = [];
         for (const e of data.evaluations ?? []) {
-          const ts = e.evaluatedAt?.toISOString() ?? '';
-          if (ts > latestTimestampRef.current) {
+          const ts = toIso(e.evaluatedAt);
+          if (ts && ts > latestTimestampRef.current) {
             newItems.push({ type: 'evaluation', data: e, timestamp: ts });
           }
         }
         for (const t of data.tips ?? []) {
-          const ts = t.tippedAt?.toISOString() ?? '';
-          if (ts > latestTimestampRef.current) {
+          const ts = toIso(t.tippedAt);
+          if (ts && ts > latestTimestampRef.current) {
             newItems.push({ type: 'tip', data: t, timestamp: ts });
           }
         }

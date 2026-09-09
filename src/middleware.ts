@@ -13,6 +13,9 @@ const publicPaths = [
   '/api/auth',
   '/api/webhook',
   '/api/health',
+  '/api/jobs',
+  '/api/claim',
+  '/api/community/verify-bot',
   '/_next',
   '/favicon.ico',
 ];

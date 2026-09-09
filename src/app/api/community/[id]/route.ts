@@ -54,26 +54,39 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const allowedFields = [
-      'name', 'min_score', 'tip_amount_low', 'tip_amount_high',
-      'daily_limit_per_user', 'eval_context', 'is_active',
-    ];
-
-    const columnMap: Record<string, string> = {
-      name: 'name',
-      min_score: 'minScore',
-      tip_amount_low: 'tipAmountLow',
-      tip_amount_high: 'tipAmountHigh',
-      daily_limit_per_user: 'dailyLimitPerUser',
-      eval_context: 'evalContext',
-      is_active: 'isActive',
-    };
-
+    // Zod-like manual validation to avoid extra dep at krit path
     const updates: Record<string, unknown> = {};
-    for (const key of allowedFields) {
-      if (body[key] !== undefined) {
-        updates[columnMap[key]] = body[key];
-      }
+    if (body.name !== undefined) {
+      if (typeof body.name !== 'string' || body.name.trim().length < 2 || body.name.trim().length > 80) return NextResponse.json({ error: 'invalid name' }, { status: 400 });
+      updates.name = body.name.trim();
+    }
+    if (body.min_score !== undefined) {
+      const v = Number(body.min_score);
+      if (!Number.isInteger(v) || v < 1 || v > 10) return NextResponse.json({ error: 'invalid min_score' }, { status: 400 });
+      updates.minScore = v;
+    }
+    if (body.tip_amount_low !== undefined) {
+      const v = Number(body.tip_amount_low);
+      if (!Number.isFinite(v) || v < 0 || v > 100) return NextResponse.json({ error: 'invalid tip_amount_low' }, { status: 400 });
+      updates.tipAmountLow = String(v);
+    }
+    if (body.tip_amount_high !== undefined) {
+      const v = Number(body.tip_amount_high);
+      if (!Number.isFinite(v) || v < 0 || v > 100) return NextResponse.json({ error: 'invalid tip_amount_high' }, { status: 400 });
+      updates.tipAmountHigh = String(v);
+    }
+    if (body.daily_limit_per_user !== undefined) {
+      const v = Number(body.daily_limit_per_user);
+      if (!Number.isInteger(v) || v < 1 || v > 100) return NextResponse.json({ error: 'invalid daily_limit_per_user' }, { status: 400 });
+      updates.dailyLimitPerUser = v;
+    }
+    if (body.eval_context !== undefined) {
+      if (typeof body.eval_context !== 'string' || body.eval_context.length > 2000) return NextResponse.json({ error: 'invalid eval_context' }, { status: 400 });
+      updates.evalContext = body.eval_context;
+    }
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== 'boolean') return NextResponse.json({ error: 'invalid is_active' }, { status: 400 });
+      updates.isActive = body.is_active;
     }
 
     if (Object.keys(updates).length === 0) {

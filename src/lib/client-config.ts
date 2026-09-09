@@ -11,9 +11,10 @@ const warnEnv = (name: string, value?: string): string => {
   return value;
 };
 
-const optionalEnv = (name: string, defaultValue: string = ''): string => {
+const _optionalEnv = (name: string, defaultValue: string = ''): string => {
   return process.env[name] || defaultValue;
 };
+void _optionalEnv;
 
 export const clientConfig = {
   appUrl: warnEnv('NEXT_PUBLIC_APP_URL', process.env.NEXT_PUBLIC_APP_URL),

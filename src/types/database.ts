@@ -1,49 +1,6 @@
-export interface Database {
-  public: {
-    Tables: {
-      plans: {
-        Row: Plan;
-        Insert: Omit<Plan, 'id' | 'created_at'>;
-        Update: Partial<Omit<Plan, 'id' | 'created_at'>>;
-      };
-      users: {
-        Row: User;
-        Insert: User;
-        Update: Partial<User>;
-      };
-      subscriptions: {
-        Row: Subscription;
-        Insert: Omit<Subscription, 'id' | 'created_at'>;
-        Update: Partial<Omit<Subscription, 'id' | 'created_at'>>;
-      };
-      communities: {
-        Row: Community;
-        Insert: Omit<Community, 'id' | 'created_at' | 'usdc_balance'>;
-        Update: Partial<Omit<Community, 'id' | 'created_at'>>;
-      };
-      wallets: {
-        Row: Wallet;
-        Insert: Omit<Wallet, 'id' | 'created_at'>;
-        Update: Partial<Omit<Wallet, 'id' | 'created_at'>>;
-      };
-      evaluations: {
-        Row: Evaluation;
-        Insert: Omit<Evaluation, 'id' | 'evaluated_at'>;
-        Update: Partial<Omit<Evaluation, 'id' | 'evaluated_at'>>;
-      };
-      tips: {
-        Row: Tip;
-        Insert: Omit<Tip, 'id' | 'tipped_at'>;
-        Update: Partial<Omit<Tip, 'id' | 'tipped_at'>>;
-      };
-      rate_limits: {
-        Row: RateLimit;
-        Insert: Omit<RateLimit, 'id' | 'tips_today' | 'last_tip_at'>;
-        Update: Partial<Omit<RateLimit, 'id'>>;
-      };
-    };
-  };
-}
+// Deprecated: Supabase-era types. Use Drizzle InferSelectModel from src/db/schema instead.
+// Kept for reference only — will be removed. Do not import in new code.
+export type Database_Deprecated = unknown;
 
 export interface Plan {
   id: string;

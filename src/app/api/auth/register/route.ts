@@ -3,9 +3,13 @@ import { hash } from 'bcryptjs';
 import { getDb } from '@/lib/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rl = checkRateLimit(`register:${ip}`, 10, 60_000);
+    if (!rl.allowed) return NextResponse.json({ error: 'rate limited' }, { status: 429 });
     const { email, password } = await request.json();
 
     if (!email || !password) {

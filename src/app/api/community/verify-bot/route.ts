@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rl = checkRateLimit(`verify-bot:${ip}`, 20, 60_000);
+    if (!rl.allowed) return NextResponse.json({ error: 'rate limited' }, { status: 429 });
     const { botToken } = await request.json();
 
     if (!botToken || typeof botToken !== 'string') {

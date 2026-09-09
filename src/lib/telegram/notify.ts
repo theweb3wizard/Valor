@@ -71,6 +71,14 @@ export async function sendTipAnnouncement(
     ? `@${params.username}`
     : `[User](tg://user?id=${params.telegramUserId})`;
 
+  // Build signed claim URL if secret available
+  let claimLink = `${params.claimUrl}?user=${params.telegramUserId}`;
+  try {
+    const { computeClaimSignature } = await import('@/lib/claim-auth');
+    const sig = computeClaimSignature(params.telegramUserId);
+    claimLink += `&sig=${sig}`;
+  } catch {}
+
   let message = `🏆 *Tip Awarded!*\n\n`;
   message += `${mention} earned *${params.amount} USDC* for their contribution!\n\n`;
   message += `Quality score: ${params.score}/10\n`;
@@ -79,7 +87,7 @@ export async function sendTipAnnouncement(
   if (params.txHash) {
     message += `[View on BaseScan](https://basescan.org/tx/${params.txHash})\n`;
   }
-  message += `[Claim your USDC](${params.claimUrl}?user=${params.telegramUserId})`;
+  message += `[Claim your USDC](${claimLink})`;
 
   return telegramPost(params.botToken, 'sendMessage', {
     chat_id: params.chatId,

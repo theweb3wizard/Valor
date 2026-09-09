@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
-import { zodSchema } from '@ai-sdk/provider-utils';
 import { evaluationOutputSchema, type EvaluationOutput } from '@/lib/gemini/schema';
+import { serverConfig } from '@/lib/config';
 
 export interface EvaluateMessageParams {
   messageText: string;
@@ -15,9 +15,36 @@ function isRateLimitError(err: unknown): boolean {
   return message.includes('429') || message.includes('rate limit') || message.includes('too many requests');
 }
 
+function mockEvaluation(params: EvaluateMessageParams): EvaluationOutput {
+  const len = params.messageText.trim().length;
+  const words = params.messageText.trim().split(/\s+/).length;
+  // deterministic mock: longer, detailed messages score higher
+  let score = 5;
+  if (words > 30 && len > 150) score = 9;
+  else if (words > 15 && len > 80) score = 8;
+  else if (words > 8) score = 7;
+  else if (words > 4) score = 5;
+  else score = 2;
+  // sprinkle variation by hash of message to avoid uniform scores in demo
+  const hash = params.messageText.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  if (hash % 5 === 0 && score < 9) score += 1;
+  const should_tip = score >= params.minScore;
+  const reason = should_tip ? `Mock evaluation: quality content (${words} words)` : 'Mock evaluation: below threshold';
+  return { score, reason: reason.slice(0, 200), should_tip };
+}
+
 export async function evaluateMessage(
   params: EvaluateMessageParams
 ): Promise<EvaluationOutput> {
+  // Dev fallback: if GEMINI_API_KEY missing/placeholder, use deterministic mock so flow works without setup
+  if (!serverConfig.hasGeminiConfig) {
+    if (serverConfig.isDev) {
+      console.warn(JSON.stringify({ step: 'gemini_evaluation', warning: 'GEMINI_API_KEY missing — using mock evaluation in dev' }));
+      return mockEvaluation(params);
+    }
+    return { score: 0, reason: 'AI not configured', should_tip: false };
+  }
+
   const systemPrompt = buildSystemPrompt(params.evalContext, params.minScore);
   const userPrompt = buildUserPrompt(params.messageText, params.parentMessageText);
 
@@ -28,7 +55,7 @@ export async function evaluateMessage(
     try {
       const { object } = await generateObject({
         model: google('gemini-2.5-flash'),
-        schema: zodSchema(evaluationOutputSchema),
+        schema: evaluationOutputSchema,
         system: systemPrompt,
         prompt: userPrompt,
       });
@@ -53,10 +80,13 @@ export async function evaluateMessage(
           error: err instanceof Error ? err.message : 'Unknown error',
         })
       );
+      // In dev, fallback to mock so pipeline doesn't die
+      if (serverConfig.isDev) return mockEvaluation(params);
       return { score: 0, reason: 'Evaluation unavailable', should_tip: false };
     }
   }
 
+  if (serverConfig.isDev) return mockEvaluation(params);
   return { score: 0, reason: 'Evaluation unavailable', should_tip: false };
 }
 

@@ -8,9 +8,15 @@ import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 function computeWebhookSecret(botToken: string): string {
-  const secret = serverConfig.hasCronSecret ? serverConfig.cronSecret : 'dev-fallback-secret';
+  if (!serverConfig.hasCronSecret) {
+    if (!serverConfig.isDev) {
+      throw new Error('CRON_SECRET not configured');
+    }
+    console.warn('CRON_SECRET missing — using dev fallback. Do not use in production.');
+    return createHash('sha256').update(botToken + 'dev-fallback-secret').digest('hex');
+  }
   return createHash('sha256')
-    .update(botToken + secret)
+    .update(botToken + serverConfig.cronSecret)
     .digest('hex');
 }
 
@@ -36,10 +42,16 @@ export async function POST(
       return NextResponse.json({ error: 'community not found' }, { status: 404 });
     }
 
-    const expectedSecret = computeWebhookSecret(community.botToken);
+    let expectedSecret: string;
+    try {
+      expectedSecret = computeWebhookSecret(community.botToken);
+    } catch {
+      return NextResponse.json({ error: 'server misconfigured: CRON_SECRET missing' }, { status: 500 });
+    }
     const providedSecret = req.headers.get('x-telegram-bot-api-secret-token');
-
-    if (!providedSecret || providedSecret !== expectedSecret) {
+    // In dev, allow missing header when using fallback so local ngrok/manual tests work
+    const allowMissingInDev = serverConfig.isDev && !serverConfig.hasCronSecret;
+    if (!allowMissingInDev && (!providedSecret || providedSecret !== expectedSecret)) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
 

@@ -8,8 +8,13 @@ import { eq, sql } from 'drizzle-orm';
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const isAuthenticated = serverConfig.hasCronSecret && authHeader === `Bearer ${serverConfig.cronSecret}`;
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
 
-  if (!isAuthenticated) {
+  // Vercel cron cannot send Authorization header — allow it to refresh balances
+  // but still require DB to exist. For strict security, keep secret path for manual triggers.
+  const shouldRefresh = isAuthenticated || isVercelCron;
+
+  if (!shouldRefresh) {
     return NextResponse.json({
       status: 'ok',
       timestamp: new Date().toISOString(),

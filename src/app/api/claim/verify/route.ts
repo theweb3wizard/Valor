@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import * as schema from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
+import { verifyClaimSignature } from '@/lib/claim-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const telegramUserId = request.nextUrl.searchParams.get('telegramUserId');
+    const sig = request.nextUrl.searchParams.get('sig');
 
     if (!telegramUserId) {
       return NextResponse.json({ error: 'telegramUserId required' }, { status: 400 });
+    }
+
+    if (!verifyClaimSignature(telegramUserId, sig)) {
+      return NextResponse.json({ error: 'invalid or missing signature' }, { status: 401 });
     }
 
     const db = getDb();
@@ -54,14 +60,33 @@ export async function GET(request: NextRequest) {
 
     const walletMap = new Map(userWallets?.map((w) => [w.communityId, w.walletAddress]) ?? []);
 
+    // Deduct withdrawals from available — tolerate missing table on fresh dev DB
+    let withdrawals: { communityId: string; amount: string }[] = [];
+    try {
+      withdrawals = communityIds.length
+        ? await db.select({ communityId: schema.withdrawals.communityId, amount: schema.withdrawals.amount })
+            .from(schema.withdrawals)
+            .where(and(eq(schema.withdrawals.telegramUserId, telegramUserId), inArray(schema.withdrawals.communityId, communityIds)))
+        : [];
+    } catch {
+      withdrawals = [];
+    }
+
+    const withdrawnByCommunity = new Map<string, number>();
+    for (const w of withdrawals ?? []) {
+      withdrawnByCommunity.set(w.communityId, (withdrawnByCommunity.get(w.communityId) ?? 0) + Number(w.amount));
+    }
+
     const walletInfo = communityIds.map((communityId) => {
       const communityTips = (tips ?? []).filter((t) => t.communityId === communityId);
-      const available = communityTips
+      const grossAvailable = communityTips
         .filter((t) => t.transactionStatus === 'confirmed')
         .reduce((sum, t) => sum + Number(t.amount), 0);
       const pending = communityTips
         .filter((t) => t.transactionStatus === 'pending' && t.failureReason === 'no_wallet')
         .reduce((sum, t) => sum + Number(t.amount), 0);
+      const withdrawn = withdrawnByCommunity.get(communityId) ?? 0;
+      const available = Math.max(0, grossAvailable - withdrawn);
 
       return {
         communityId,

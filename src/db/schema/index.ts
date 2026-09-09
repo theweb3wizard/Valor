@@ -5,5 +5,6 @@ export { communities } from './communities';
 export { wallets } from './wallets';
 export { evaluations } from './evaluations';
 export { tips } from './tips';
+export { withdrawals } from './withdrawals';
 export { rateLimits } from './rateLimits';
 export { accounts, sessions, verificationTokens } from './auth';

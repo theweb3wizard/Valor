@@ -5,18 +5,18 @@ import { Pricing } from '@/components/landing/Pricing';
 
 export default function LandingPage() {
   return (
-    <main>
+    <main className="bg-background">
       <Hero />
       <HowItWorks />
       <Pricing />
-      <footer className="border-t border-border px-6 py-12">
-        <div className="mx-auto max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <span>&copy; {new Date().getFullYear()} Valor. All rights reserved.</span>
+      <footer className="border-t border-white/5 px-6 py-10">
+        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
+          <span className="font-mono text-xs">&copy; {new Date().getFullYear()} Valor • Base • Gemini • viem</span>
           <nav className="flex items-center gap-6">
-            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-            <Link href="/refund" className="hover:text-foreground transition-colors">Refund</Link>
-            <Link href="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link href="/refund" className="hover:text-white transition-colors">Refund</Link>
+            <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
           </nav>
         </div>
       </footer>

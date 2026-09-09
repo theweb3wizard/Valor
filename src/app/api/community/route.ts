@@ -86,9 +86,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'failed to create community' }, { status: 500 });
     }
 
-    const webhookSecret = createHash('sha256')
-      .update(botToken + (serverConfig.hasCronSecret ? serverConfig.cronSecret : 'dev-fallback-secret'))
-      .digest('hex');
+    let webhookSecret: string;
+    if (!serverConfig.hasCronSecret) {
+      if (!serverConfig.isDev) {
+        return NextResponse.json({ error: 'server misconfigured: CRON_SECRET missing' }, { status: 500 });
+      }
+      webhookSecret = createHash('sha256').update(botToken + 'dev-fallback-secret').digest('hex');
+    } else {
+      webhookSecret = createHash('sha256').update(botToken + serverConfig.cronSecret).digest('hex');
+    }
 
     const webhookUrl = `${serverConfig.appUrl}/api/webhook/${botToken}`;
 

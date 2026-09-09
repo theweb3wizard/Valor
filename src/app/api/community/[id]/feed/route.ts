@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { evaluations, tips } from '@/db/schema';
-import { eq, and, desc, gt, sql } from 'drizzle-orm';
+import { eq, and, desc, gt } from 'drizzle-orm';
+import { auth } from '@/lib/auth';
 
 export async function GET(
   _req: NextRequest,
@@ -9,6 +10,8 @@ export async function GET(
 ) {
   try {
     const { id: communityId } = await params;
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     const { searchParams } = new URL(_req.url);
     const since = searchParams.get('since') || '';
 
@@ -16,6 +19,11 @@ export async function GET(
     if (!db) {
       return NextResponse.json({ error: 'database not configured' }, { status: 500 });
     }
+
+    // Ownership check — feed is dashboard data
+    const { communities: communitiesTable } = await import('@/db/schema');
+    const [comm] = await db.select({ ownerUserId: communitiesTable.ownerUserId }).from(communitiesTable).where(eq(communitiesTable.id, communityId)).limit(1);
+    if (!comm || comm.ownerUserId !== session.user.id) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
     let evalFilter = eq(evaluations.communityId, communityId);
     let tipFilter = eq(tips.communityId, communityId);
